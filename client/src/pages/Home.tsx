@@ -3,7 +3,12 @@
  * The central can and active atmospheric layers remain the focus; text and glass UI frame it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ChevronDown, Plus } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { startLogin } from "@/const";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 declare const gsap: any;
 
@@ -22,6 +27,8 @@ const ASSETS = {
 const ModelViewer = "model-viewer" as any;
 
 type Flavor = "classic" | "blue";
+type PackSize = "single" | "six" | "twelve";
+type Cadence = "one_time" | "weekly" | "monthly";
 type ModelViewerElement = HTMLElement & {
   cameraOrbit?: string;
   createTexture?: (url: string) => Promise<unknown>;
@@ -31,12 +38,52 @@ type ModelViewerElement = HTMLElement & {
 const berryClasses = ["b1", "b2", "b3", "b4", "b5", "b6"];
 const backgroundBerryClasses = ["b7", "b8", "b9"];
 const leafClasses = ["l1", "l2", "l3", "l4"];
+const packMultipliers: Record<PackSize, number> = { single: 1, six: 5.5, twelve: 10.2 };
+const cadenceDiscounts: Record<Cadence, number> = { one_time: 0, weekly: 0.05, monthly: 0.1 };
+const formatMoney = (amountCents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amountCents / 100);
 
 export default function Home() {
+  const { isAuthenticated } = useAuth();
   const [activeFlavor, setActiveFlavor] = useState<Flavor>("classic");
+  const [packSize, setPackSize] = useState<PackSize>("six");
+  const [cadence, setCadence] = useState<Cadence>("one_time");
+  const [quantity, setQuantity] = useState(1);
+  const [configuratorOpen, setConfiguratorOpen] = useState(() => new URLSearchParams(window.location.search).get("configure") === "1");
+  const [cartOpen, setCartOpen] = useState(false);
   const switchingRef = useRef(false);
   const spinRef = useRef(0);
   const textureRef = useRef<{ blue: unknown | null; green: unknown | null }>({ blue: null, green: null });
+  const utils = trpc.useUtils();
+  const catalogQuery = trpc.catalog.list.useQuery();
+  const cartQuery = trpc.cart.get.useQuery(undefined, { enabled: isAuthenticated, retry: false });
+  const addToCart = trpc.cart.add.useMutation({
+    onSuccess: async summary => {
+      await utils.cart.get.invalidate();
+      setConfiguratorOpen(false);
+      setCartOpen(true);
+      toast.success(`${summary.totalItems} item${summary.totalItems === 1 ? "" : "s"} saved to your cart.`);
+    },
+    onError: error => toast.error(error.message || "Your cart could not be updated."),
+  });
+  const updateCart = trpc.cart.update.useMutation({
+    onSuccess: () => utils.cart.get.invalidate(),
+    onError: error => toast.error(error.message || "Your cart could not be updated."),
+  });
+  const removeCart = trpc.cart.remove.useMutation({
+    onSuccess: () => utils.cart.get.invalidate(),
+    onError: error => toast.error(error.message || "Your cart could not be updated."),
+  });
+  const selectedSlug = activeFlavor === "classic" ? "diet-classic" : "zero-lime";
+  const selectedProduct = catalogQuery.data?.find(product => product.slug === selectedSlug);
+  const configuredPrice = selectedProduct
+    ? Math.round(selectedProduct.basePriceCents * packMultipliers[packSize] * (1 - cadenceDiscounts[cadence]))
+    : 0;
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("configure") === "1") {
+      setConfiguratorOpen(true);
+    }
+  }, []);
 
   const switchFlavor = useCallback((flavor: Flavor) => {
     if (switchingRef.current || flavor === activeFlavor) return;
@@ -244,6 +291,27 @@ export default function Home() {
   }, []);
 
   const flipFlavor = () => switchFlavor(activeFlavor === "classic" ? "blue" : "classic");
+  const openConfigurator = () => setConfiguratorOpen(true);
+  const openCart = () => {
+    if (!isAuthenticated) {
+      toast.message("Sign in to save your Soda cart.");
+      startLogin();
+      return;
+    }
+    setCartOpen(true);
+  };
+  const handleAddToCart = () => {
+    if (!isAuthenticated) {
+      toast.message("Sign in to save your Soda cart.");
+      startLogin();
+      return;
+    }
+    if (!selectedProduct) {
+      toast.error("The Soda catalog is still loading. Please try again.");
+      return;
+    }
+    addToCart.mutate({ productSlug: selectedProduct.slug, packSize, cadence, quantity });
+  };
 
   return (
     <div className={`soda-world ${activeFlavor === "blue" ? "is-blue" : "is-classic"}`}>
@@ -261,7 +329,14 @@ export default function Home() {
             <a href="#home" className={`nav-item ${index === 0 ? "active" : ""}`} key={item}>{item}</a>
           ))}
         </nav>
-        <a className="contact-btn" href="mailto:hello@soda.example">Contact Us</a>
+        <div className="header-actions">
+          <button className="cart-btn" type="button" onClick={openCart} aria-label="Open cart">
+            <ShoppingBag size={16} />
+            <span>Cart</span>
+            {isAuthenticated && <span className="cart-count">{cartQuery.data?.totalItems ?? 0}</span>}
+          </button>
+          <a className="contact-btn" href="mailto:hello@soda.example">Contact Us</a>
+        </div>
       </header>
 
       <main className="hero" id="home">
@@ -273,7 +348,7 @@ export default function Home() {
           <section className="hero-left">
             <h1 className="main-title"><span>Pure</span><br />Zero</h1>
             <p className="description">Unleash the crisp taste of zero sugar.<br />Refreshment redefined in every bubble —<br />all in one sleek design.</p>
-            <button className="primary-btn" type="button" onClick={flipFlavor}>Shop Now <span className="plus-icon"><Plus size={18} strokeWidth={3} /></span></button>
+            <button className="primary-btn" type="button" onClick={openConfigurator}>Shop Now <span className="plus-icon"><Plus size={18} strokeWidth={3} /></span></button>
             <div className="award-badge">
               <div className="award-icon"><ChevronDown size={25} strokeWidth={2} /></div>
               <div className="award-text"><span className="award-title">DESIGN AWARDS</span><span className="award-subtitle">PREMIUM BEVERAGE 2025</span></div>
@@ -317,6 +392,77 @@ export default function Home() {
 
       <svg className="frosted-filter" aria-hidden="true"><filter id="frosted"><feTurbulence type="fractalNoise" baseFrequency="0.0125" numOctaves="3" result="noise" /><feDisplacementMap in="SourceGraphic" in2="noise" scale="80" xChannelSelector="R" yChannelSelector="G" /></filter></svg>
       <div className="model-preload" aria-hidden="true"><ModelViewer src={ASSETS.blueberry} /><ModelViewer src={ASSETS.cherry} /></div>
+
+      <Dialog open={configuratorOpen} onOpenChange={setConfiguratorOpen}>
+        <DialogContent className="soda-dialog soda-dialog-config" aria-describedby="soda-config-description">
+          <DialogHeader>
+            <span className="dialog-kicker">YOUR ZERO-SUGAR ORDER</span>
+            <DialogTitle>{selectedProduct?.name ?? "Loading flavor"}</DialogTitle>
+            <DialogDescription id="soda-config-description">{selectedProduct?.description ?? "Retrieving the latest Soda options."}</DialogDescription>
+          </DialogHeader>
+          <div className="option-section">
+            <span className="option-label">Select a pack</span>
+            <div className="option-grid pack-grid">
+              {(["single", "six", "twelve"] as PackSize[]).map(option => (
+                <button className={`option-pill ${packSize === option ? "selected" : ""}`} type="button" key={option} onClick={() => setPackSize(option)} aria-pressed={packSize === option}>
+                  <strong>{option === "single" ? "1 can" : option === "six" ? "6 cans" : "12 cans"}</strong>
+                  <small>{option === "single" ? "Try it" : option === "six" ? "Most loved" : "Stock up"}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="option-section">
+            <span className="option-label">Delivery cadence</span>
+            <div className="option-grid cadence-grid">
+              {(["one_time", "weekly", "monthly"] as Cadence[]).map(option => (
+                <button className={`option-pill cadence-pill ${cadence === option ? "selected" : ""}`} type="button" key={option} onClick={() => setCadence(option)} aria-pressed={cadence === option}>
+                  <strong>{option === "one_time" ? "One-time" : option === "weekly" ? "Weekly" : "Monthly"}</strong>
+                  <small>{option === "one_time" ? "No commitment" : option === "weekly" ? "Save 5%" : "Save 10%"}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="quantity-row">
+            <div><span className="option-label">Quantity</span><p>Up to 24 configured packs.</p></div>
+            <div className="stepper" aria-label="Quantity selector">
+              <button type="button" onClick={() => setQuantity(current => Math.max(1, current - 1))} disabled={quantity <= 1} aria-label="Decrease quantity"><Minus size={15} /></button>
+              <span>{quantity}</span>
+              <button type="button" onClick={() => setQuantity(current => Math.min(24, current + 1))} disabled={quantity >= 24} aria-label="Increase quantity"><Plus size={15} /></button>
+            </div>
+          </div>
+          <DialogFooter className="soda-dialog-footer">
+            <div className="dialog-price"><span>Order total</span><strong>{selectedProduct ? formatMoney(configuredPrice * quantity) : "—"}</strong></div>
+            <button className="dialog-primary" type="button" onClick={handleAddToCart} disabled={!selectedProduct || addToCart.isPending}>
+              {addToCart.isPending ? "Saving…" : isAuthenticated ? "Add to cart" : "Sign in to add"}
+              <ShoppingBag size={17} />
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cartOpen} onOpenChange={setCartOpen}>
+        <DialogContent className="soda-dialog soda-cart-dialog" aria-describedby="cart-description">
+          <DialogHeader>
+            <span className="dialog-kicker">SAVED FOR REFRESHMENT</span>
+            <DialogTitle>Your Soda cart</DialogTitle>
+            <DialogDescription id="cart-description">Your configured packs are securely saved to your account.</DialogDescription>
+          </DialogHeader>
+          <div className="cart-list">
+            {!isAuthenticated && <div className="cart-empty"><p>Sign in to build and save your Soda cart.</p><button className="dialog-primary" type="button" onClick={startLogin}>Sign in</button></div>}
+            {isAuthenticated && cartQuery.isLoading && <div className="cart-empty">Loading your cart…</div>}
+            {isAuthenticated && !cartQuery.isLoading && cartQuery.data?.items.length === 0 && <div className="cart-empty">Your cart is ready for its first crisp can.</div>}
+            {cartQuery.data?.items.map(item => (
+              <article className="cart-line" key={item.id}>
+                <span className="cart-swatch" style={{ backgroundColor: item.accent }} aria-hidden="true" />
+                <div className="cart-item-copy"><strong>{item.productName}</strong><span>{item.packSize === "single" ? "1 can" : `${item.packSize} cans`} · {item.cadence.replace("_", " ")}</span></div>
+                <div className="cart-line-actions"><strong>{formatMoney(item.unitPriceCents * item.quantity)}</strong><div className="mini-stepper"><button type="button" aria-label={`Decrease ${item.productName}`} onClick={() => item.quantity === 1 ? removeCart.mutate({ cartItemId: item.id }) : updateCart.mutate({ cartItemId: item.id, quantity: item.quantity - 1 })}><Minus size={13} /></button><span>{item.quantity}</span><button type="button" aria-label={`Increase ${item.productName}`} onClick={() => updateCart.mutate({ cartItemId: item.id, quantity: Math.min(24, item.quantity + 1)})}><Plus size={13} /></button></div></div>
+                <button className="remove-line" type="button" onClick={() => removeCart.mutate({ cartItemId: item.id })} aria-label={`Remove ${item.productName}`}><Trash2 size={15} /></button>
+              </article>
+            ))}
+          </div>
+          {isAuthenticated && (cartQuery.data?.totalItems ?? 0) > 0 && <DialogFooter className="soda-dialog-footer"><div className="dialog-price"><span>Saved total</span><strong>{formatMoney(cartQuery.data?.subtotalCents ?? 0)}</strong></div><button className="dialog-primary" type="button" onClick={() => { setCartOpen(false); toast.success("Your saved Soda cart is ready for checkout setup."); }}>Review order <ArrowRight size={17} /></button></DialogFooter>}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
