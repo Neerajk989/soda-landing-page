@@ -16,10 +16,6 @@ async function startServer() {
       ? path.resolve(__dirname, "public")
       : path.resolve(__dirname, "..", "dist", "public");
 
-  app.get("/health", (_req, res) => {
-    res.status(200).json({ status: "ok" });
-  });
-
   app.use(express.static(staticPath));
 
   // Handle client-side routing - serve index.html for all routes
