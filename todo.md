@@ -10,3 +10,16 @@
 - [x] Authenticated product configuration and cart updates were intentionally skipped at the user's request.
 - [x] Validate the mobile configurator controls and account-aware cart action through the responsive configuration deep link and mobile layout review.
 - [x] Add cart-operation helper tests for add, quantity update, removal, and total-summary behavior.
+- [x] Replace the Soda brand and experience with an AWS Community website for S.B. Jain Institute of Technology.
+- [x] Gather approved institution and AWS Community visual references for the official-style design.
+- [x] Add student-community models and backend APIs for events, program applications, announcements, and contact enquiries.
+- [x] Build responsive public pages and authenticated student workflows with complete navigation.
+- [x] Test the community website, verify mobile responsiveness, and publish the finished version.
+- [ ] Keep the site labelled as a public-reference-based student community until formal S.B. Jain and AWS brand approval is supplied.
+- [ ] Verify authenticated event registration and Student Builder Program submission with a signed-in student account.
+- [ ] Verify a real public community enquiry submission with user-provided contact information.
+- [ ] Save the final published community website checkpoint after complete workflow verification.
+- [x] Explore the requested YouTube channel and provide a concise channel analysis with three viewing recommendations.
+- [x] Import the supplied AWS Community core-member names and positions into a persistent member directory.
+- [x] Add public member-list APIs and a responsive leadership directory section to the community website.
+- [x] Validate the imported roster, member filters, and responsive directory experience before publishing.

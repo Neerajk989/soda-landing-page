@@ -1,468 +1,261 @@
-/**
- * Kinetic Carbonation design: an asymmetric, full-viewport 3D beverage campaign.
- * The central can and active atmospheric layers remain the focus; text and glass UI frame it.
- */
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ChevronDown, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { startLogin } from "@/const";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FormEvent, useState } from "react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  Cloud,
+  Code2,
+  ExternalLink,
+  GraduationCap,
+  Layers3,
+  Lightbulb,
+  Linkedin,
+  LockKeyhole,
+  MapPin,
+  Menu,
+  MessageSquare,
+  Network,
+  Rocket,
+  Send,
+  Sparkles,
+  UsersRound,
+  X,
+} from "lucide-react";
 
-declare const gsap: any;
+const logoUrl = "/manus-storage/sbjit-institute-logo_5c15d68c.png";
 
-const ASSETS = {
-  leaves: "https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/leaves.glb",
-  cherry: "https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/cherry.glb",
-  blueberry: "https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/blueberry.glb",
-  can: "https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/deit_soda2.glb",
-  classicCard: "https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/Green%20Soda.png",
-  blueCard: "https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/Blue%20Soda.png",
-  greenTexture: "https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/green%20base%20color.jpg",
-  blueTexture: "https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/blue%20base%20color.jpg",
-  bubble: "https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/bubble.png",
+const tracks = [
+  { id: "01", name: "Cloud foundations", copy: "Build fluent cloud vocabulary and practical confidence.", icon: Cloud },
+  { id: "02", name: "Serverless & APIs", copy: "Move from idea to an accessible, deployable backend.", icon: Layers3 },
+  { id: "03", name: "Data & AI", copy: "Explore responsible data projects with a builder mindset.", icon: Sparkles },
+  { id: "04", name: "Security & architecture", copy: "Design resilient systems with clear technical choices.", icon: LockKeyhole },
+];
+
+const navItems = [
+  ["About", "about"],
+  ["Program", "program"],
+  ["Members", "members"],
+  ["Events", "events"],
+  ["Connect", "connect"],
+] as const;
+
+type EventRecord = {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  scheduleLabel: string;
+  location: string;
+  format: "in_person" | "online" | "hybrid";
+  audience: string;
 };
 
-const ModelViewer = "model-viewer" as any;
-
-type Flavor = "classic" | "blue";
-type PackSize = "single" | "six" | "twelve";
-type Cadence = "one_time" | "weekly" | "monthly";
-type ModelViewerElement = HTMLElement & {
-  cameraOrbit?: string;
-  createTexture?: (url: string) => Promise<unknown>;
-  model?: { materials: Array<{ pbrMetallicRoughness?: { baseColorTexture?: { setTexture: (texture: unknown) => void } } }> };
+type MemberRecord = {
+  id: number;
+  fullName: string;
+  position: string;
+  team: string;
+  sortOrder: number;
+  active: number;
 };
 
-const berryClasses = ["b1", "b2", "b3", "b4", "b5", "b6"];
-const backgroundBerryClasses = ["b7", "b8", "b9"];
-const leafClasses = ["l1", "l2", "l3", "l4"];
-const packMultipliers: Record<PackSize, number> = { single: 1, six: 5.5, twelve: 10.2 };
-const cadenceDiscounts: Record<Cadence, number> = { one_time: 0, weekly: 0.05, monthly: 0.1 };
-const formatMoney = (amountCents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amountCents / 100);
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 export default function Home() {
-  const { isAuthenticated } = useAuth();
-  const [activeFlavor, setActiveFlavor] = useState<Flavor>("classic");
-  const [packSize, setPackSize] = useState<PackSize>("six");
-  const [cadence, setCadence] = useState<Cadence>("one_time");
-  const [quantity, setQuantity] = useState(1);
-  const [configuratorOpen, setConfiguratorOpen] = useState(() => new URLSearchParams(window.location.search).get("configure") === "1");
-  const [cartOpen, setCartOpen] = useState(false);
-  const switchingRef = useRef(false);
-  const spinRef = useRef(0);
-  const textureRef = useRef<{ blue: unknown | null; green: unknown | null }>({ blue: null, green: null });
+  const { user, isAuthenticated, loading, logout } = useAuth();
   const utils = trpc.useUtils();
-  const catalogQuery = trpc.catalog.list.useQuery();
-  const cartQuery = trpc.cart.get.useQuery(undefined, { enabled: isAuthenticated, retry: false });
-  const addToCart = trpc.cart.add.useMutation({
-    onSuccess: async summary => {
-      await utils.cart.get.invalidate();
-      setConfiguratorOpen(false);
-      setCartOpen(true);
-      toast.success(`${summary.totalItems} item${summary.totalItems === 1 ? "" : "s"} saved to your cart.`);
+  const eventsQuery = trpc.community.events.useQuery();
+  const announcementsQuery = trpc.community.announcements.useQuery();
+  const membersQuery = trpc.community.members.useQuery();
+  const activityQuery = trpc.student.activity.useQuery(undefined, { enabled: isAuthenticated, retry: false });
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [eventDialog, setEventDialog] = useState<EventRecord | null>(null);
+  const [applicationOpen, setApplicationOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [memberTeam, setMemberTeam] = useState("All teams");
+  const [application, setApplication] = useState({ branch: "", yearOfStudy: "", linkedinUrl: "", skills: "", motivation: "" });
+  const [contact, setContact] = useState({ name: "", email: "", subject: "", message: "" });
+
+  const registerMutation = trpc.student.register.useMutation({
+    onSuccess: async result => {
+      await utils.student.activity.invalidate();
+      setEventDialog(null);
+      toast.success(result.alreadyRegistered ? "You are already registered for this session." : "Your event registration has been saved.");
     },
-    onError: error => toast.error(error.message || "Your cart could not be updated."),
+    onError: error => toast.error(error.message || "Unable to save your registration."),
   });
-  const updateCart = trpc.cart.update.useMutation({
-    onSuccess: () => utils.cart.get.invalidate(),
-    onError: error => toast.error(error.message || "Your cart could not be updated."),
+  const applicationMutation = trpc.student.submitApplication.useMutation({
+    onSuccess: async () => {
+      await utils.student.activity.invalidate();
+      setApplicationOpen(false);
+      setApplication({ branch: "", yearOfStudy: "", linkedinUrl: "", skills: "", motivation: "" });
+      toast.success("Your Student Builder Program interest form has been submitted.");
+    },
+    onError: error => toast.error(error.message || "Unable to submit your interest form."),
   });
-  const removeCart = trpc.cart.remove.useMutation({
-    onSuccess: () => utils.cart.get.invalidate(),
-    onError: error => toast.error(error.message || "Your cart could not be updated."),
+  const contactMutation = trpc.community.contact.useMutation({
+    onSuccess: () => {
+      setContactOpen(false);
+      setContact({ name: "", email: "", subject: "", message: "" });
+      toast.success("Thanks — the community team will receive your enquiry.");
+    },
+    onError: error => toast.error(error.message || "Unable to send your enquiry."),
   });
-  const selectedSlug = activeFlavor === "classic" ? "diet-classic" : "zero-lime";
-  const selectedProduct = catalogQuery.data?.find(product => product.slug === selectedSlug);
-  const configuredPrice = selectedProduct
-    ? Math.round(selectedProduct.basePriceCents * packMultipliers[packSize] * (1 - cadenceDiscounts[cadence]))
-    : 0;
 
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("configure") === "1") {
-      setConfiguratorOpen(true);
-    }
-  }, []);
-
-  const switchFlavor = useCallback((flavor: Flavor) => {
-    if (switchingRef.current || flavor === activeFlavor) return;
-    switchingRef.current = true;
-    setActiveFlavor(flavor);
-
-    const productModel = document.querySelector("#product-model") as ModelViewerElement | null;
-    const stage = document.querySelector(".soda-world") as HTMLElement | null;
-    const berries = Array.from(document.querySelectorAll<HTMLElement>(".berry"));
-    const heroCenter = document.querySelector(".hero-center") as HTMLElement | null;
-    if (!productModel || !stage || !heroCenter || typeof gsap === "undefined") {
-      switchingRef.current = false;
-      return;
-    }
-
-    const targetColors = flavor === "blue"
-      ? { inner: "#0b4f8a", mid: "#04294e", outer: "#010c14" }
-      : { inner: "#0b8a78", mid: "#044e3b", outer: "#011411" };
-
-    gsap.to(stage, { "--bg-inner": targetColors.inner, "--bg-mid": targetColors.mid, "--bg-outer": targetColors.outer, duration: 1.5, ease: "power2.inOut" });
-
-    const spinState = { val: 0, blur: 0 };
-    gsap.to(spinState, {
-      val: 360,
-      blur: 15,
-      duration: 0.6,
-      ease: "power2.in",
-      onUpdate: () => {
-        spinRef.current = spinState.val;
-        productModel.style.filter = `blur(${spinState.blur}px)`;
-      },
-      onComplete: () => {
-        const texture = flavor === "blue" ? textureRef.current.blue : textureRef.current.green;
-        if (productModel.model && texture) {
-          productModel.model.materials.forEach((material) => material.pbrMetallicRoughness?.baseColorTexture?.setTexture(texture));
-        }
-        gsap.to(spinState, {
-          val: 720,
-          blur: 0,
-          duration: 1.5,
-          ease: "back.out(0.7)",
-          onUpdate: () => {
-            spinRef.current = spinState.val;
-            productModel.style.filter = `blur(${spinState.blur}px)`;
-          },
-          onComplete: () => {
-            spinRef.current = 0;
-            productModel.style.filter = "none";
-          },
-        });
-      },
-    });
-
-    let completed = 0;
-    berries.forEach((berry) => {
-      const rect = berry.getBoundingClientRect();
-      const centerX = window.innerWidth / 2 - rect.left - rect.width / 2;
-      const centerY = window.innerHeight / 2 - rect.top - rect.height / 2;
-      const angle = Number(berry.dataset.angle ?? 0);
-      const baseX = Number(berry.dataset.baseX ?? 0);
-      const baseY = Number(berry.dataset.baseY ?? 0);
-      const nextX = (Math.random() - 0.5) * 200;
-      const nextY = (Math.random() - 0.5) * 200;
-      gsap.set(berry, { rotation: angle, x: baseX, y: baseY });
-      gsap.timeline()
-        .to(berry, {
-          x: centerX, y: centerY, rotation: angle + 45, scale: 0.1, opacity: 0, duration: 0.5, ease: "power2.in",
-          onComplete: () => {
-            berry.setAttribute("src", flavor === "blue" ? ASSETS.blueberry : ASSETS.cherry);
-            heroCenter.style.zIndex = "50";
-          },
-        })
-        .to(berry, { duration: 0.3 })
-        .to(berry, {
-          x: nextX, y: nextY, rotation: angle + 90, scale: 1, opacity: 1, duration: 0.9, ease: "back.out(1.5)",
-          onStart: () => { heroCenter.style.zIndex = "1"; },
-          onComplete: () => {
-            berry.dataset.angle = String(angle + 90);
-            berry.dataset.baseX = String(nextX);
-            berry.dataset.baseY = String(nextY);
-            berry.dataset.rx = "0";
-            berry.dataset.ry = "0";
-            completed += 1;
-            if (completed === berries.length) switchingRef.current = false;
-          },
-        });
-    });
-  }, [activeFlavor]);
-
-  useEffect(() => {
-    const productModel = document.querySelector("#product-model") as ModelViewerElement | null;
-    const bubblesContainer = document.querySelector("#bubbles-container") as HTMLElement | null;
-    if (!productModel) return;
-
-    const warmTextures = async () => {
-      if (!productModel.createTexture) return;
-      try {
-        textureRef.current.blue = await productModel.createTexture(ASSETS.blueTexture);
-        textureRef.current.green = await productModel.createTexture(ASSETS.greenTexture);
-        const material = productModel.model?.materials[0];
-        if (material?.pbrMetallicRoughness?.baseColorTexture && textureRef.current.blue && textureRef.current.green) {
-          material.pbrMetallicRoughness.baseColorTexture.setTexture(textureRef.current.blue);
-          await new Promise((resolve) => requestAnimationFrame(resolve));
-          material.pbrMetallicRoughness.baseColorTexture.setTexture(textureRef.current.green);
-        }
-      } catch {
-        // The base model remains visible if a remote texture is unavailable.
-      }
-    };
-    productModel.addEventListener("load", warmTextures, { once: true });
-
-    const allBerries = Array.from(document.querySelectorAll<HTMLElement>(".berry"));
-    allBerries.forEach((berry) => {
-      berry.dataset.rx = "0";
-      berry.dataset.ry = "0";
-      berry.dataset.angle = String(Math.random() * 360);
-      berry.dataset.baseX = "0";
-      berry.dataset.baseY = "0";
-    });
-
-    const mouse = { x: 0, y: 0, px: window.innerWidth / 2, py: window.innerHeight / 2 };
-    const current = { x: 0, y: 0 };
-    const onMouseMove = (event: MouseEvent) => {
-      mouse.x = event.clientX / window.innerWidth - 0.5;
-      mouse.y = event.clientY / window.innerHeight - 0.5;
-      mouse.px = event.clientX;
-      mouse.py = event.clientY;
-    };
-    window.addEventListener("mousemove", onMouseMove);
-
-    let frameId = 0;
-    const animate = () => {
-      const time = Date.now() * 0.001;
-      current.x += (mouse.x - current.x) * 0.05;
-      current.y += (mouse.y - current.y) * 0.05;
-      productModel.cameraOrbit = `${current.x * 40 + spinRef.current}deg ${90 + current.y * 20}deg 380%`;
-
-      const berriesFG = document.querySelector(".berries-container") as HTMLElement | null;
-      const berriesBG = document.querySelector(".berries-container-bg") as HTMLElement | null;
-      const leaves = document.querySelector(".leaves-container") as HTMLElement | null;
-      if (berriesFG) berriesFG.style.transform = `translate(${current.x * 60}px, ${current.y * 60}px)`;
-      if (berriesBG) berriesBG.style.transform = `translate(${current.x * -30}px, ${current.y * -30}px)`;
-      if (leaves) leaves.style.transform = `translate(${current.x * -15}px, ${current.y * -15}px)`;
-
-      if (!switchingRef.current) {
-        allBerries.forEach((berry, index) => {
-          const rect = berry.getBoundingClientRect();
-          const bx = rect.left + rect.width / 2;
-          const by = rect.top + rect.height / 2;
-          const dx = mouse.px - bx;
-          const dy = mouse.py - by;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          let targetRx = 0;
-          let targetRy = 0;
-          let speed = 1;
-          if (distance < 400 && distance > 0.1) {
-            const force = (400 - distance) / 400;
-            targetRx = (dx / distance) * force * -80;
-            targetRy = (dy / distance) * force * -80;
-            speed = 1 + force * 5;
-          }
-          const rx = Number(berry.dataset.rx ?? 0) + (targetRx - Number(berry.dataset.rx ?? 0)) * 0.1;
-          const ry = Number(berry.dataset.ry ?? 0) + (targetRy - Number(berry.dataset.ry ?? 0)) * 0.1;
-          const angle = Number(berry.dataset.angle ?? 0) + 0.2 * speed;
-          const baseX = Number(berry.dataset.baseX ?? 0);
-          const baseY = Number(berry.dataset.baseY ?? 0);
-          berry.dataset.rx = String(rx);
-          berry.dataset.ry = String(ry);
-          berry.dataset.angle = String(angle);
-          const duration = [5, 7, 6, 8, 5.5, 6.5, 9, 11, 10][index % 9];
-          const phase = (time + index * 0.7) * (Math.PI * 2 / duration);
-          berry.style.transform = `translate(${rx + baseX}px, ${ry + baseY + Math.sin(phase) * 15}px) rotate(${angle + Math.cos(phase) * 6}deg)`;
-        });
-      }
-
-      document.querySelectorAll<HTMLElement>(".leaf").forEach((leaf, index) => {
-        const phase = (time + index * 1.2) * (Math.PI * 2 / (10 + index * 2));
-        leaf.style.transform = `translate(${Math.cos(phase * 0.5) * 15}px, ${Math.sin(phase) * 20}px) rotate(${Math.sin(phase * 0.3) * 15}deg)`;
-      });
-      frameId = requestAnimationFrame(animate);
-    };
-    animate();
-
-    const createBubble = () => {
-      if (!bubblesContainer) return;
-      const bubble = document.createElement("img");
-      bubble.src = ASSETS.bubble;
-      bubble.className = "bubble-img";
-      bubble.style.width = `${Math.random() * 20 + 10}px`;
-      bubble.style.left = `${Math.random() * 100}%`;
-      bubble.style.bottom = "-50px";
-      const duration = Math.random() * 6 + 4;
-      bubble.style.animation = `floatUpImg ${duration}s linear forwards`;
-      bubblesContainer.appendChild(bubble);
-      window.setTimeout(() => bubble.remove(), duration * 1000);
-    };
-    const bubbleInterval = window.setInterval(createBubble, 400);
-
-    return () => {
-      productModel.removeEventListener("load", warmTextures);
-      window.removeEventListener("mousemove", onMouseMove);
-      window.cancelAnimationFrame(frameId);
-      window.clearInterval(bubbleInterval);
-    };
-  }, []);
-
-  const flipFlavor = () => switchFlavor(activeFlavor === "classic" ? "blue" : "classic");
-  const openConfigurator = () => setConfiguratorOpen(true);
-  const openCart = () => {
+  const openApplication = () => {
     if (!isAuthenticated) {
-      toast.message("Sign in to save your Soda cart.");
+      toast.message("Sign in to submit your Student Builder Program interest form.");
       startLogin();
       return;
     }
-    setCartOpen(true);
+    setApplicationOpen(true);
   };
-  const handleAddToCart = () => {
+
+  const openEvent = (event: EventRecord) => {
     if (!isAuthenticated) {
-      toast.message("Sign in to save your Soda cart.");
+      toast.message("Sign in to register for community events.");
       startLogin();
       return;
     }
-    if (!selectedProduct) {
-      toast.error("The Soda catalog is still loading. Please try again.");
-      return;
-    }
-    addToCart.mutate({ productSlug: selectedProduct.slug, packSize, cadence, quantity });
+    setEventDialog(event);
   };
+
+  const submitApplication = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    applicationMutation.mutate(application);
+  };
+
+  const submitContact = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    contactMutation.mutate(contact);
+  };
+
+  const events = (eventsQuery.data ?? []) as EventRecord[];
+  const members = (membersQuery.data ?? []) as MemberRecord[];
+  const memberTeams = ["All teams", ...Array.from(new Set(members.map(member => member.team)))];
+  const visibleMembers = memberTeam === "All teams" ? members : members.filter(member => member.team === memberTeam);
+  const announcements = Array.from(new Map((announcementsQuery.data ?? []).map(item => [item.title, item])).values());
+  const firstName = user?.name?.split(" ")[0] || "Builder";
 
   return (
-    <div className={`soda-world ${activeFlavor === "blue" ? "is-blue" : "is-classic"}`}>
-      <div className="atmosphere atmosphere-classic" aria-hidden="true" />
-      <div className="atmosphere atmosphere-blue" aria-hidden="true" />
-      <div id="bubbles-container" aria-hidden="true" />
-
-      <header className="header">
-        <a className="logo" href="#home" aria-label="Soda home">
-          <img className="logo-mark" src="/manus-storage/soda-orb-mark_6ff73453.png" alt="" />
-          <span>Soda</span>
-        </a>
-        <nav className="nav glass" aria-label="Main navigation">
-          {["Home", "Ingredients", "Taste", "Eco", "Reviews"].map((item, index) => (
-            <a href="#home" className={`nav-item ${index === 0 ? "active" : ""}`} key={item}>{item}</a>
-          ))}
+    <main className="community-shell">
+      <div className="top-rule" />
+      <header className="site-header">
+        <button className="brand-lockup" onClick={() => scrollToSection("top")} type="button" aria-label="Go to top">
+          <span className="brand-sign"><Cloud size={18} aria-hidden="true" /></span>
+          <span><strong>AWS COMMUNITY</strong><small>S.B. JAIN INSTITUTE OF TECHNOLOGY</small></span>
+        </button>
+        <nav className={`desktop-nav ${mobileNavOpen ? "open" : ""}`} aria-label="Main navigation">
+          {navItems.map(([label, id]) => <button type="button" onClick={() => { scrollToSection(id); setMobileNavOpen(false); }} key={id}>{label}</button>)}
         </nav>
         <div className="header-actions">
-          <button className="cart-btn" type="button" onClick={openCart} aria-label="Open cart">
-            <ShoppingBag size={16} />
-            <span>Cart</span>
-            {isAuthenticated && <span className="cart-count">{cartQuery.data?.totalItems ?? 0}</span>}
-          </button>
-          <a className="contact-btn" href="mailto:hello@soda.example">Contact Us</a>
+          {!loading && isAuthenticated ? (
+            <button className="account-button" type="button" onClick={logout} title="Sign out"><span className="avatar-dot">{firstName.charAt(0)}</span><span className="account-name">{firstName}</span></button>
+          ) : (
+            <button className="text-button" type="button" onClick={startLogin}>Student sign in <ArrowUpRight size={15} /></button>
+          )}
+          <button className="mobile-menu" type="button" onClick={() => setMobileNavOpen(current => !current)} aria-label="Toggle navigation">{mobileNavOpen ? <X size={20} /> : <Menu size={20} />}</button>
         </div>
       </header>
 
-      <main className="hero" id="home">
-        <div className="hero-content">
-          <div className="leaves-container" aria-hidden="true">
-            {leafClasses.map((className, index) => <ModelViewer key={className} className={`leaf ${className}`} src={ASSETS.leaves} environment-image="neutral" exposure="1.0" interaction-prompt="none" camera-orbit={`${index * 55 - 30}deg ${45 + index * 10}deg 105%`} />)}
+      <section className="hero-section" id="top">
+        <div className="hero-grid" aria-hidden="true" />
+        <div className="hero-content page-width">
+          <div className="eyebrow"><span />STUDENT-LED · CLOUD-FOCUSED · CAMPUS-ROOTED</div>
+          <div className="hero-copy">
+            <h1>Build what’s<br /><em>next.</em></h1>
+            <p>A student community for S.B. Jain learners who want to turn curiosity into cloud-ready projects, strong technical habits, and meaningful peer networks.</p>
           </div>
-
-          <section className="hero-left">
-            <h1 className="main-title"><span>Pure</span><br />Zero</h1>
-            <p className="description">Unleash the crisp taste of zero sugar.<br />Refreshment redefined in every bubble —<br />all in one sleek design.</p>
-            <button className="primary-btn" type="button" onClick={openConfigurator}>Shop Now <span className="plus-icon"><Plus size={18} strokeWidth={3} /></span></button>
-            <div className="award-badge">
-              <div className="award-icon"><ChevronDown size={25} strokeWidth={2} /></div>
-              <div className="award-text"><span className="award-title">DESIGN AWARDS</span><span className="award-subtitle">PREMIUM BEVERAGE 2025</span></div>
-            </div>
-          </section>
-
-          <div className="berries-container-bg" aria-hidden="true">
-            {backgroundBerryClasses.map((className, index) => <ModelViewer key={className} className={`berry ${className}`} src={ASSETS.cherry} environment-image="neutral" exposure="1.0" interaction-prompt="none" camera-orbit={`${index * 75 - 20}deg ${45 + index * 15}deg 105%`} />)}
+          <div className="hero-actions">
+            <button className="primary-cta" type="button" onClick={openApplication}>Explore the Student Builder Program <ArrowRight size={18} /></button>
+            <button className="secondary-cta" type="button" onClick={() => scrollToSection("events")}>See community sessions <ChevronRight size={18} /></button>
           </div>
-
-          <div className="hero-center" aria-label="Diet Soda 3D product view">
-            <div className="product-halo" />
-            <ModelViewer id="product-model" src={ASSETS.can} alt="Diet Soda 3D Model" camera-controls disable-zoom shadow-intensity="0" environment-image="neutral" exposure="1.5" interaction-prompt="none" camera-orbit="0deg 90deg 380%" field-of-view="30deg" className="main-product-3d" />
-          </div>
-
-          <div className="berries-container" aria-hidden="true">
-            {berryClasses.map((className, index) => <ModelViewer key={className} className={`berry ${className}`} src={ASSETS.cherry} environment-image="neutral" exposure="1.2" interaction-prompt="none" camera-orbit={`${[45, -120, 200, 10, -45, 80][index]}deg ${[120, 45, 90, 20, 160, 75][index]}deg 105%`} />)}
-          </div>
-
-          <section className="hero-right" id="flavors">
-            <div className="product-carousel">
-              <div className="carousel-cards">
-                <button type="button" className={`card ${activeFlavor === "classic" ? "active" : ""}`} onClick={() => switchFlavor("classic")} aria-pressed={activeFlavor === "classic"}>
-                  <img src={ASSETS.classicCard} alt="Diet Classic" />
-                  <span className="card-info"><span>Diet Classic</span><span>$2.99</span></span>
-                </button>
-                <button type="button" className={`card card-blue ${activeFlavor === "blue" ? "active" : ""}`} onClick={() => switchFlavor("blue")} aria-pressed={activeFlavor === "blue"}>
-                  <img src={ASSETS.blueCard} alt="Zero Lime" />
-                  <span className="card-info"><span>Zero Lime</span><span>$2.99</span></span>
-                </button>
-              </div>
-              <div className="carousel-nav" aria-label="Flavor carousel controls">
-                <button className="nav-arrow" type="button" onClick={flipFlavor} aria-label="Previous flavor"><ArrowLeft size={16} /></button>
-                <button className="nav-arrow" type="button" onClick={flipFlavor} aria-label="Next flavor"><ArrowRight size={16} /></button>
-              </div>
-            </div>
-            <h2 className="side-title"><span>Refreshingly</span><br />Clean</h2>
-          </section>
+          <div className="hero-footnote"><span>01</span><p>Learning happens in public — through questions, experiments, and projects worth sharing.</p></div>
         </div>
-      </main>
+        <div className="hero-orbit" aria-hidden="true"><span className="orbit-core"><Network size={42} /></span><i /><b>cloud<br />network</b></div>
+      </section>
 
-      <svg className="frosted-filter" aria-hidden="true"><filter id="frosted"><feTurbulence type="fractalNoise" baseFrequency="0.0125" numOctaves="3" result="noise" /><feDisplacementMap in="SourceGraphic" in2="noise" scale="80" xChannelSelector="R" yChannelSelector="G" /></filter></svg>
-      <div className="model-preload" aria-hidden="true"><ModelViewer src={ASSETS.blueberry} /><ModelViewer src={ASSETS.cherry} /></div>
+      <section className="institution-strip" aria-label="Institution identity">
+        <div className="page-width strip-content">
+          <img src={logoUrl} alt="S.B. Jain Institute of Technology, Management and Research" />
+          <p>Student community initiative for builders at S.B. Jain Institute of Technology, Management and Research, Nagpur.</p>
+          <a href="https://www.sbjit.edu.in/" target="_blank" rel="noreferrer">Visit institute site <ExternalLink size={14} /></a>
+        </div>
+      </section>
 
-      <Dialog open={configuratorOpen} onOpenChange={setConfiguratorOpen}>
-        <DialogContent className="soda-dialog soda-dialog-config" aria-describedby="soda-config-description">
-          <DialogHeader>
-            <span className="dialog-kicker">YOUR ZERO-SUGAR ORDER</span>
-            <DialogTitle>{selectedProduct?.name ?? "Loading flavor"}</DialogTitle>
-            <DialogDescription id="soda-config-description">{selectedProduct?.description ?? "Retrieving the latest Soda options."}</DialogDescription>
-          </DialogHeader>
-          <div className="option-section">
-            <span className="option-label">Select a pack</span>
-            <div className="option-grid pack-grid">
-              {(["single", "six", "twelve"] as PackSize[]).map(option => (
-                <button className={`option-pill ${packSize === option ? "selected" : ""}`} type="button" key={option} onClick={() => setPackSize(option)} aria-pressed={packSize === option}>
-                  <strong>{option === "single" ? "1 can" : option === "six" ? "6 cans" : "12 cans"}</strong>
-                  <small>{option === "single" ? "Try it" : option === "six" ? "Most loved" : "Stock up"}</small>
-                </button>
-              ))}
-            </div>
+      <section className="intro-section page-width" id="about">
+        <div className="section-number">02 / ABOUT THE COMMUNITY</div>
+        <div className="intro-layout">
+          <h2>Less lecture.<br /><span>More launch.</span></h2>
+          <div className="intro-detail"><p>We create a supportive place for students to learn cloud concepts, practise with peers, and grow the confidence to build useful technology. Start where you are, then keep showing up.</p><div className="three-values"><span><UsersRound size={18} />Peer learning</span><span><Code2 size={18} />Project practice</span><span><Lightbulb size={18} />Community sharing</span></div></div>
+        </div>
+      </section>
+
+      <section className="track-section" id="program">
+        <div className="page-width">
+          <div className="section-heading"><div><span className="section-number">03 / STUDENT BUILDER PROGRAM</span><h2>A practical path<br />for <em>curious builders.</em></h2></div><button className="outline-button" type="button" onClick={openApplication}>Submit interest <ArrowUpRight size={16} /></button></div>
+          <div className="track-grid">
+            {tracks.map(track => { const Icon = track.icon; return <article className="track-card" key={track.id}><span className="track-id">{track.id}</span><Icon size={25} strokeWidth={1.6} /><h3>{track.name}</h3><p>{track.copy}</p><button type="button" onClick={openApplication}>I want to explore <ArrowRight size={15} /></button></article>; })}
           </div>
-          <div className="option-section">
-            <span className="option-label">Delivery cadence</span>
-            <div className="option-grid cadence-grid">
-              {(["one_time", "weekly", "monthly"] as Cadence[]).map(option => (
-                <button className={`option-pill cadence-pill ${cadence === option ? "selected" : ""}`} type="button" key={option} onClick={() => setCadence(option)} aria-pressed={cadence === option}>
-                  <strong>{option === "one_time" ? "One-time" : option === "weekly" ? "Weekly" : "Monthly"}</strong>
-                  <small>{option === "one_time" ? "No commitment" : option === "weekly" ? "Save 5%" : "Save 10%"}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="quantity-row">
-            <div><span className="option-label">Quantity</span><p>Up to 24 configured packs.</p></div>
-            <div className="stepper" aria-label="Quantity selector">
-              <button type="button" onClick={() => setQuantity(current => Math.max(1, current - 1))} disabled={quantity <= 1} aria-label="Decrease quantity"><Minus size={15} /></button>
-              <span>{quantity}</span>
-              <button type="button" onClick={() => setQuantity(current => Math.min(24, current + 1))} disabled={quantity >= 24} aria-label="Increase quantity"><Plus size={15} /></button>
-            </div>
-          </div>
-          <DialogFooter className="soda-dialog-footer">
-            <div className="dialog-price"><span>Order total</span><strong>{selectedProduct ? formatMoney(configuredPrice * quantity) : "—"}</strong></div>
-            <button className="dialog-primary" type="button" onClick={handleAddToCart} disabled={!selectedProduct || addToCart.isPending}>
-              {addToCart.isPending ? "Saving…" : isAuthenticated ? "Add to cart" : "Sign in to add"}
-              <ShoppingBag size={17} />
-            </button>
-          </DialogFooter>
-        </DialogContent>
+          <div className="program-note"><Rocket size={20} /><p><strong>How it works:</strong> Submit your interest, choose a starting track, and follow community updates as sessions and project opportunities are published.</p></div>
+        </div>
+      </section>
+
+      <section className="members-section page-width" id="members">
+        <div className="section-heading members-heading"><div><span className="section-number">04 / CORE MEMBERS</span><h2>Meet the people<br /><em>making it happen.</em></h2></div><div className="member-count"><UsersRound size={17} /><strong>{members.length || 20}</strong><span>core members</span></div></div>
+        <p className="members-intro">The AWS Student Builder Group is organised around technical, design, operations, marketing, and event leadership. Browse the complete core roster by team.</p>
+        <div className="member-filters" role="tablist" aria-label="Filter members by team">
+          {memberTeams.map(team => <button type="button" key={team} onClick={() => setMemberTeam(team)} className={memberTeam === team ? "active" : ""} aria-pressed={memberTeam === team}>{team}</button>)}
+        </div>
+        <div className="member-grid">
+          {membersQuery.isLoading && <div className="member-loading">Loading the core roster…</div>}
+          {visibleMembers.map((member, index) => <article className={`member-card ${member.team === "Community Leadership" ? "leader-card" : ""}`} key={member.id || `${member.fullName}-${member.team}`}><div className="member-card-top"><span>{String(index + 1).padStart(2, "0")}</span><UsersRound size={18} /></div><h3>{member.fullName}</h3><p>{member.position}</p><footer>{member.team}</footer></article>)}
+        </div>
+      </section>
+
+      <section className="events-section page-width" id="events">
+        <div className="section-heading"><div><span className="section-number">05 / COMMUNITY SESSIONS</span><h2>Find your<br /><em>next room.</em></h2></div><span className="events-status"><span />OPEN FOR STUDENT REGISTRATION</span></div>
+        <div className="event-list">
+          {eventsQuery.isLoading && <div className="event-loading">Loading community sessions…</div>}
+          {events.map((event, index) => <article className="event-row" key={event.slug}><span className="event-index">0{index + 1}</span><div><span className="event-meta"><CalendarDays size={14} />{event.scheduleLabel}</span><h3>{event.title}</h3><p>{event.description}</p></div><div className="event-detail"><span><MapPin size={14} />{event.location}</span><span>{event.format.replace("_", " ")} · {event.audience}</span></div><button type="button" onClick={() => openEvent(event)}>Register <ArrowRight size={17} /></button></article>)}
+        </div>
+      </section>
+
+      <section className="announcement-section">
+        <div className="page-width announcement-layout">
+          <div><span className="section-number">06 / NOTICEBOARD</span><h2>What’s<br /><em>moving.</em></h2></div>
+          <div className="notice-list">{announcements.map(item => <article key={item.id}><span>{item.category}</span><h3>{item.title}</h3><p>{item.body}</p><ArrowUpRight size={18} /></article>)}</div>
+        </div>
+      </section>
+
+      {isAuthenticated && <section className="student-space page-width"><div><span className="section-number">YOUR COMMUNITY SPACE</span><h2>Welcome back,<br /><em>{firstName}.</em></h2></div><div className="student-activity"><div className="activity-stat"><span>Event registrations</span><strong>{activityQuery.data?.registrations.length ?? 0}</strong></div><div className="activity-stat"><span>Program interest</span><strong>{activityQuery.data?.application?.status ? activityQuery.data.application.status.replace("_", " ") : "Not submitted"}</strong></div><button className="secondary-cta" type="button" onClick={openApplication}>Update your interest <ArrowRight size={16} /></button></div></section>}
+
+      <section className="connect-section" id="connect">
+        <div className="page-width connect-grid"><div><span className="section-number">07 / CONNECT</span><h2>Let’s build a<br /><em>useful network.</em></h2><p>Have an idea for a session, collaboration, or campus project? Send the community team a note.</p></div><div className="connect-card"><MessageSquare size={25} /><h3>Start a conversation</h3><p>Share a question, propose a session, or ask how to get involved.</p><button className="primary-cta" type="button" onClick={() => setContactOpen(true)}>Send an enquiry <Send size={16} /></button></div></div>
+      </section>
+
+      <footer className="site-footer page-width"><div className="footer-brand"><span className="brand-sign"><Cloud size={17} /></span><div><strong>AWS COMMUNITY</strong><span>AT S.B. JAIN</span></div></div><p>Student-led community website. AWS and related marks belong to their respective owners. Institutional branding is used here for the community initiative and should be formally approved before public institutional use.</p><a href="mailto:info@sbjit.edu.in">info@sbjit.edu.in <ArrowUpRight size={14} /></a></footer>
+
+      <Dialog open={Boolean(eventDialog)} onOpenChange={open => !open && setEventDialog(null)}>
+        <DialogContent className="community-dialog"><DialogHeader><span className="dialog-label">EVENT REGISTRATION</span><DialogTitle>{eventDialog?.title}</DialogTitle><DialogDescription>{eventDialog?.scheduleLabel} · {eventDialog?.location}</DialogDescription></DialogHeader><div className="dialog-body"><CheckCircle2 size={21} /><p>Registering saves your interest to your student community profile. The community team will share final details through official channels.</p></div><button className="primary-cta dialog-action" type="button" onClick={() => eventDialog && registerMutation.mutate({ eventSlug: eventDialog.slug })} disabled={registerMutation.isPending}>{registerMutation.isPending ? "Saving registration…" : "Confirm registration"}<ArrowRight size={17} /></button></DialogContent>
       </Dialog>
 
-      <Dialog open={cartOpen} onOpenChange={setCartOpen}>
-        <DialogContent className="soda-dialog soda-cart-dialog" aria-describedby="cart-description">
-          <DialogHeader>
-            <span className="dialog-kicker">SAVED FOR REFRESHMENT</span>
-            <DialogTitle>Your Soda cart</DialogTitle>
-            <DialogDescription id="cart-description">Your configured packs are securely saved to your account.</DialogDescription>
-          </DialogHeader>
-          <div className="cart-list">
-            {!isAuthenticated && <div className="cart-empty"><p>Sign in to build and save your Soda cart.</p><button className="dialog-primary" type="button" onClick={startLogin}>Sign in</button></div>}
-            {isAuthenticated && cartQuery.isLoading && <div className="cart-empty">Loading your cart…</div>}
-            {isAuthenticated && !cartQuery.isLoading && cartQuery.data?.items.length === 0 && <div className="cart-empty">Your cart is ready for its first crisp can.</div>}
-            {cartQuery.data?.items.map(item => (
-              <article className="cart-line" key={item.id}>
-                <span className="cart-swatch" style={{ backgroundColor: item.accent }} aria-hidden="true" />
-                <div className="cart-item-copy"><strong>{item.productName}</strong><span>{item.packSize === "single" ? "1 can" : `${item.packSize} cans`} · {item.cadence.replace("_", " ")}</span></div>
-                <div className="cart-line-actions"><strong>{formatMoney(item.unitPriceCents * item.quantity)}</strong><div className="mini-stepper"><button type="button" aria-label={`Decrease ${item.productName}`} onClick={() => item.quantity === 1 ? removeCart.mutate({ cartItemId: item.id }) : updateCart.mutate({ cartItemId: item.id, quantity: item.quantity - 1 })}><Minus size={13} /></button><span>{item.quantity}</span><button type="button" aria-label={`Increase ${item.productName}`} onClick={() => updateCart.mutate({ cartItemId: item.id, quantity: Math.min(24, item.quantity + 1)})}><Plus size={13} /></button></div></div>
-                <button className="remove-line" type="button" onClick={() => removeCart.mutate({ cartItemId: item.id })} aria-label={`Remove ${item.productName}`}><Trash2 size={15} /></button>
-              </article>
-            ))}
-          </div>
-          {isAuthenticated && (cartQuery.data?.totalItems ?? 0) > 0 && <DialogFooter className="soda-dialog-footer"><div className="dialog-price"><span>Saved total</span><strong>{formatMoney(cartQuery.data?.subtotalCents ?? 0)}</strong></div><button className="dialog-primary" type="button" onClick={() => { setCartOpen(false); toast.success("Your saved Soda cart is ready for checkout setup."); }}>Review order <ArrowRight size={17} /></button></DialogFooter>}
-        </DialogContent>
+      <Dialog open={applicationOpen} onOpenChange={setApplicationOpen}>
+        <DialogContent className="community-dialog form-dialog"><DialogHeader><span className="dialog-label">STUDENT BUILDER PROGRAM</span><DialogTitle>Tell us where you want to build.</DialogTitle><DialogDescription>This interest form helps the community team understand the learning tracks students want next.</DialogDescription></DialogHeader><form onSubmit={submitApplication} className="community-form"><div className="form-row"><label>Branch<input required value={application.branch} onChange={e => setApplication({ ...application, branch: e.target.value })} placeholder="e.g. Computer Science" /></label><label>Year of study<select required value={application.yearOfStudy} onChange={e => setApplication({ ...application, yearOfStudy: e.target.value })}><option value="">Choose year</option><option value="First year">First year</option><option value="Second year">Second year</option><option value="Third year">Third year</option><option value="Final year">Final year</option><option value="Postgraduate">Postgraduate</option></select></label></div><label>LinkedIn URL <span>(optional)</span><input value={application.linkedinUrl} onChange={e => setApplication({ ...application, linkedinUrl: e.target.value })} placeholder="https://linkedin.com/in/…" /></label><label>What are you already exploring?<textarea required minLength={8} value={application.skills} onChange={e => setApplication({ ...application, skills: e.target.value })} placeholder="Skills, technologies, project ideas…" /></label><label>Why do you want to join this student builder community?<textarea required minLength={40} value={application.motivation} onChange={e => setApplication({ ...application, motivation: e.target.value })} placeholder="Share the kind of project or learning journey you want to pursue." /></label><button className="primary-cta dialog-action" type="submit" disabled={applicationMutation.isPending}>{applicationMutation.isPending ? "Submitting…" : "Submit interest"}<Send size={16} /></button></form></DialogContent>
       </Dialog>
-    </div>
+
+      <Dialog open={contactOpen} onOpenChange={setContactOpen}>
+        <DialogContent className="community-dialog form-dialog"><DialogHeader><span className="dialog-label">CONNECT WITH THE COMMUNITY</span><DialogTitle>Send an enquiry.</DialogTitle><DialogDescription>This form is for community ideas and general questions. For official institute enquiries, use the institute contact channels.</DialogDescription></DialogHeader><form onSubmit={submitContact} className="community-form"><div className="form-row"><label>Name<input required value={contact.name} onChange={e => setContact({ ...contact, name: e.target.value })} placeholder="Your name" /></label><label>Email<input required type="email" value={contact.email} onChange={e => setContact({ ...contact, email: e.target.value })} placeholder="name@example.com" /></label></div><label>Subject<input required value={contact.subject} onChange={e => setContact({ ...contact, subject: e.target.value })} placeholder="What would you like to discuss?" /></label><label>Message<textarea required minLength={20} value={contact.message} onChange={e => setContact({ ...contact, message: e.target.value })} placeholder="Write your note here…" /></label><button className="primary-cta dialog-action" type="submit" disabled={contactMutation.isPending}>{contactMutation.isPending ? "Sending…" : "Send enquiry"}<Send size={16} /></button></form></DialogContent>
+      </Dialog>
+    </main>
   );
 }

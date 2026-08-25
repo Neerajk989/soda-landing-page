@@ -1,15 +1,16 @@
 import { z } from "zod";
-import { addCartItem, CADENCES, getCartSummary, listProducts, PACK_SIZES, removeCartItem, updateCartItem } from "./db";
+import { createContactEnquiry, getStudentActivity, listAnnouncements, listCommunityEvents, listCommunityMembers, registerForEvent, submitBuilderApplication } from "./db";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 
-const cartInput = z.object({
-  productSlug: z.string().min(1).max(64),
-  packSize: z.enum(PACK_SIZES),
-  cadence: z.enum(CADENCES),
-  quantity: z.number().int().min(1).max(24),
+const applicationInput = z.object({
+  branch: z.string().trim().min(2).max(96),
+  yearOfStudy: z.string().trim().min(1).max(32),
+  linkedinUrl: z.string().url().max(256).optional().or(z.literal("")),
+  skills: z.string().trim().min(8).max(1000),
+  motivation: z.string().trim().min(40).max(3000),
 });
 
 export const appRouter = router({
@@ -22,14 +23,21 @@ export const appRouter = router({
       return { success: true } as const;
     }),
   }),
-  catalog: router({
-    list: publicProcedure.query(() => listProducts()),
+  community: router({
+    events: publicProcedure.query(() => listCommunityEvents()),
+    announcements: publicProcedure.query(() => listAnnouncements()),
+    members: publicProcedure.query(() => listCommunityMembers()),
+    contact: publicProcedure.input(z.object({
+      name: z.string().trim().min(2).max(128),
+      email: z.string().email().max(320),
+      subject: z.string().trim().min(3).max(160),
+      message: z.string().trim().min(20).max(4000),
+    })).mutation(({ input }) => createContactEnquiry(input)),
   }),
-  cart: router({
-    get: protectedProcedure.query(({ ctx }) => getCartSummary(ctx.user.id)),
-    add: protectedProcedure.input(cartInput).mutation(({ ctx, input }) => addCartItem({ userId: ctx.user.id, ...input })),
-    update: protectedProcedure.input(z.object({ cartItemId: z.number().int().positive(), quantity: z.number().int().min(1).max(24) })).mutation(({ ctx, input }) => updateCartItem({ userId: ctx.user.id, ...input })),
-    remove: protectedProcedure.input(z.object({ cartItemId: z.number().int().positive() })).mutation(({ ctx, input }) => removeCartItem({ userId: ctx.user.id, ...input })),
+  student: router({
+    activity: protectedProcedure.query(({ ctx }) => getStudentActivity(ctx.user.id)),
+    register: protectedProcedure.input(z.object({ eventSlug: z.string().min(1).max(96) })).mutation(({ ctx, input }) => registerForEvent({ userId: ctx.user.id, ...input })),
+    submitApplication: protectedProcedure.input(applicationInput).mutation(({ ctx, input }) => submitBuilderApplication({ userId: ctx.user.id, ...input, linkedinUrl: input.linkedinUrl || undefined })),
   }),
 });
 

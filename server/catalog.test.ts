@@ -1,31 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { calculatePriceCents, clampCartQuantity, CATALOG_PRODUCTS, summarizeCartItems } from "./db";
+import { ANNOUNCEMENTS, COMMUNITY_EVENTS, CORE_MEMBERS, PROGRAM_TRACKS } from "./db";
 
-describe("Soda catalog pricing", () => {
-  it("exposes the two active Soda flavors", () => {
-    expect(CATALOG_PRODUCTS.map(product => product.slug)).toEqual(["diet-classic", "zero-lime"]);
+describe("community content", () => {
+  it("exposes distinct student-community events", () => {
+    expect(COMMUNITY_EVENTS.map(event => event.slug)).toEqual([
+      "student-builder-orientation",
+      "cloud-foundations-study-circle",
+    ]);
   });
 
-  it("applies pack and subscription pricing consistently", () => {
-    expect(calculatePriceCents(299, "single", "one_time")).toBe(299);
-    expect(calculatePriceCents(299, "six", "weekly")).toBe(1562);
-    expect(calculatePriceCents(299, "twelve", "monthly")).toBe(2745);
+  it("includes the learning tracks shown to students", () => {
+    expect(PROGRAM_TRACKS).toContain("Serverless & APIs");
+    expect(PROGRAM_TRACKS).toHaveLength(4);
   });
 
-  it("bounds add and quantity-update inputs to the supported cart range", () => {
-    expect(clampCartQuantity(0)).toBe(1);
-    expect(clampCartQuantity(3.8)).toBe(4);
-    expect(clampCartQuantity(28)).toBe(24);
+  it("provides student-facing announcements without inventing personal endorsements", () => {
+    expect(ANNOUNCEMENTS.every(item => item.body.length > 20)).toBe(true);
+    expect(ANNOUNCEMENTS.map(item => item.category)).toEqual(["program", "resource"]);
   });
 
-  it("calculates cart summaries after add, quantity update, and remove outcomes", () => {
-    const afterAdd = summarizeCartItems([{ unitPriceCents: 1562, quantity: 1 }]);
-    expect(afterAdd).toEqual({ subtotalCents: 1562, totalItems: 1 });
-
-    const afterUpdate = summarizeCartItems([{ unitPriceCents: 1562, quantity: 2 }, { unitPriceCents: 299, quantity: 1 }]);
-    expect(afterUpdate).toEqual({ subtotalCents: 3423, totalItems: 3 });
-
-    const afterRemoval = summarizeCartItems([{ unitPriceCents: 299, quantity: 1 }]);
-    expect(afterRemoval).toEqual({ subtotalCents: 299, totalItems: 1 });
+  it("imports the complete supplied core roster with leadership positions", () => {
+    expect(CORE_MEMBERS).toHaveLength(20);
+    expect(CORE_MEMBERS[0]).toMatchObject({ fullName: "SARANG CHAKOLE", position: "Group Leader" });
+    expect(CORE_MEMBERS.filter(member => member.position === "Head")).toHaveLength(5);
+    expect(new Set(CORE_MEMBERS.map(member => member.team))).toEqual(new Set([
+      "Community Leadership",
+      "Technical Team",
+      "Design & Content Team",
+      "Operational Team",
+      "Marketing & PR Team",
+      "Event Team",
+    ]));
   });
 });
