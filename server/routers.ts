@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { createContactEnquiry, getStudentActivity, importMemberProfiles, listAnnouncements, listCommunityEvents, listCommunityMembers, registerForEvent, submitBuilderApplication } from "./db";
+import { createContactEnquiry, getMyMemberProfileClaim, getStudentActivity, importMemberProfiles, listAnnouncements, listCommunityEvents, listCommunityMembers, listMemberProfileClaims, listMemberProfileSubmissions, registerForEvent, requestMemberProfileClaim, reviewMemberProfileClaim, reviewMemberProfileSubmission, submitBuilderApplication, submitMemberProfileDetails } from "./db";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -26,6 +26,24 @@ const memberProfileInput = z.object({
   showContactNumber: z.boolean().default(false),
 });
 
+export const memberProfileSubmissionInput = z.object({
+  memberId: z.number().int().positive(),
+  branch: z.string().trim().max(128).optional().or(z.literal("")),
+  yearOfStudy: z.string().trim().max(32).optional().or(z.literal("")),
+  usn: z.string().trim().max(64).optional().or(z.literal("")),
+  linkedinUrl: z.string().url().max(256).optional().or(z.literal("")),
+  contactNumber: z.string().trim().max(32).optional().or(z.literal("")),
+  showAcademicDetails: z.boolean().default(false),
+  showLinkedin: z.boolean().default(false),
+  showContactNumber: z.boolean().default(false),
+  acknowledgeOwnership: z.literal(true),
+});
+
+export const memberProfileClaimInput = z.object({
+  memberId: z.number().int().positive(),
+  acknowledgeIdentity: z.literal(true),
+});
+
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Administrator access is required." });
@@ -47,6 +65,33 @@ export const appRouter = router({
     events: publicProcedure.query(() => listCommunityEvents()),
     announcements: publicProcedure.query(() => listAnnouncements()),
     members: publicProcedure.query(() => listCommunityMembers()),
+    myMemberProfileClaim: protectedProcedure.query(({ ctx }) => getMyMemberProfileClaim(ctx.user.id)),
+    requestMemberProfileClaim: protectedProcedure
+      .input(memberProfileClaimInput)
+      .mutation(({ ctx, input }) => requestMemberProfileClaim({ memberId: input.memberId, userId: ctx.user.id })),
+    submitMyMemberProfile: protectedProcedure
+      .input(memberProfileSubmissionInput)
+      .mutation(({ ctx, input }) => submitMemberProfileDetails({
+        userId: ctx.user.id,
+        memberId: input.memberId,
+        branch: input.branch || undefined,
+        yearOfStudy: input.yearOfStudy || undefined,
+        usn: input.usn || undefined,
+        linkedinUrl: input.linkedinUrl || undefined,
+        contactNumber: input.contactNumber || undefined,
+        showAcademicDetails: input.showAcademicDetails,
+        showLinkedin: input.showLinkedin,
+        showContactNumber: input.showContactNumber,
+        allowAdmin: ctx.user.role === "admin",
+      })),
+    pendingMemberProfileClaims: adminProcedure.query(() => listMemberProfileClaims()),
+    reviewMemberProfileClaim: adminProcedure
+      .input(z.object({ claimId: z.number().int().positive(), approved: z.boolean() }))
+      .mutation(({ ctx, input }) => reviewMemberProfileClaim({ claimId: input.claimId, reviewerUserId: ctx.user.id, approved: input.approved })),
+    pendingMemberProfileSubmissions: adminProcedure.query(() => listMemberProfileSubmissions()),
+    reviewMemberProfileSubmission: adminProcedure
+      .input(z.object({ submissionId: z.number().int().positive(), approved: z.boolean() }))
+      .mutation(({ ctx, input }) => reviewMemberProfileSubmission({ submissionId: input.submissionId, reviewerUserId: ctx.user.id, approved: input.approved })),
     importMemberProfiles: adminProcedure
       .input(z.object({ profiles: z.array(memberProfileInput).min(1).max(100) }))
       .mutation(({ input }) => importMemberProfiles(input.profiles.map(profile => ({ ...profile, linkedinUrl: profile.linkedinUrl || undefined })))),

@@ -32,3 +32,10 @@
 - [x] Confirm a signed-in event registration end to end and verify its saved activity count.
 - [x] Verify the member profile dialog’s privacy states, deep-link close behavior, and responsive one-column detail layout.
 - [x] Register the signed-in student for the remaining community session through the live UI and confirm the resulting activity count.
+- [x] Record the signed-in account as the profile submitter and require administrator verification before any public update.
+- [x] Add a protected self-service Add details form for branch, year, USN, LinkedIn, and contact number.
+- [x] Require independent public-display consent choices before submitted profile data appears publicly.
+- [x] Validate the sign-in gate, explicit acknowledgement, administrator-only review, and zero current public visibility flags.
+- [x] Add an authorised member-claim workflow that binds one signed-in account to one approved core-member profile.
+- [x] Restrict the Add details action and submission API to the verified profile owner or an administrator.
+- [x] Test protected ownership conditions, an administrator-approved submission, and consent-limited public profile display.

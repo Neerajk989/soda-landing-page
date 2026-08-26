@@ -92,6 +92,43 @@ export const communityMembers = mysqlTable("communityMembers", {
   uniqueMember: uniqueIndex("community_members_full_name_unique").on(table.fullName),
 }));
 
+/** Member-provided profile details are held for community review before any public profile changes. */
+export const memberProfileSubmissions = mysqlTable("memberProfileSubmissions", {
+  id: int("id").autoincrement().primaryKey(),
+  memberId: int("memberId").notNull(),
+  userId: int("userId").notNull(),
+  branch: varchar("branch", { length: 128 }),
+  yearOfStudy: varchar("yearOfStudy", { length: 32 }),
+  usn: varchar("usn", { length: 64 }),
+  linkedinUrl: varchar("linkedinUrl", { length: 256 }),
+  contactNumber: varchar("contactNumber", { length: 32 }),
+  showAcademicDetails: int("showAcademicDetails").notNull().default(0),
+  showLinkedin: int("showLinkedin").notNull().default(0),
+  showContactNumber: int("showContactNumber").notNull().default(0),
+  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  reviewedByUserId: int("reviewedByUserId"),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => ({
+  uniqueSubmitterMember: uniqueIndex("member_profile_submission_user_member_unique").on(table.userId, table.memberId),
+}));
+
+/** A community reviewer verifies this claim before a signed-in account may submit a member profile. */
+export const memberProfileClaims = mysqlTable("memberProfileClaims", {
+  id: int("id").autoincrement().primaryKey(),
+  memberId: int("memberId").notNull(),
+  userId: int("userId").notNull(),
+  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  reviewedByUserId: int("reviewedByUserId"),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => ({
+  uniqueClaimedMember: uniqueIndex("member_profile_claim_member_unique").on(table.memberId),
+  uniqueClaimingUser: uniqueIndex("member_profile_claim_user_unique").on(table.userId),
+}));
+
 /** Public enquiries remain available without requiring an account. */
 export const contactEnquiries = mysqlTable("contactEnquiries", {
   id: int("id").autoincrement().primaryKey(),
@@ -107,3 +144,5 @@ export type InsertUser = typeof users.$inferInsert;
 export type CommunityEvent = typeof communityEvents.$inferSelect;
 export type BuilderApplication = typeof builderApplications.$inferSelect;
 export type CommunityMember = typeof communityMembers.$inferSelect;
+export type MemberProfileSubmission = typeof memberProfileSubmissions.$inferSelect;
+export type MemberProfileClaim = typeof memberProfileClaims.$inferSelect;

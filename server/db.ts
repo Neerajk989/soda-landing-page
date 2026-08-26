@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { announcements, builderApplications, communityEvents, communityMembers, contactEnquiries, eventRegistrations, InsertUser, users } from "../drizzle/schema";
+import { announcements, builderApplications, communityEvents, communityMembers, contactEnquiries, eventRegistrations, InsertUser, memberProfileClaims, memberProfileSubmissions, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 export const COMMUNITY_EVENTS = [
@@ -66,6 +66,16 @@ export type MemberProfileImport = {
   showLinkedin: boolean;
   showContactNumber: boolean;
 };
+
+export type MemberProfileSubmissionInput = Omit<MemberProfileImport, "fullName"> & {
+  memberId: number;
+  userId: number;
+  allowAdmin?: boolean;
+};
+
+export function canSubmitMemberProfile(input: { claimedMemberId?: number; requestedMemberId: number; allowAdmin?: boolean }) {
+  return Boolean(input.allowAdmin || input.claimedMemberId === input.requestedMemberId);
+}
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -182,6 +192,169 @@ export async function importMemberProfiles(profiles: MemberProfileImport[]) {
     updated += 1;
   }
   return { updated } as const;
+}
+
+export async function getMyMemberProfileClaim(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const claim = await db.select({
+    id: memberProfileClaims.id,
+    memberId: memberProfileClaims.memberId,
+    memberName: communityMembers.fullName,
+    status: memberProfileClaims.status,
+  }).from(memberProfileClaims)
+    .innerJoin(communityMembers, eq(memberProfileClaims.memberId, communityMembers.id))
+    .where(eq(memberProfileClaims.userId, userId)).limit(1);
+  return claim[0];
+}
+
+export async function requestMemberProfileClaim(input: { memberId: number; userId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("The member-profile service is temporarily unavailable.");
+  await seedCommunityContent();
+
+  const member = await db.select({ id: communityMembers.id }).from(communityMembers)
+    .where(and(eq(communityMembers.id, input.memberId), eq(communityMembers.active, 1))).limit(1);
+  if (!member[0]) throw new Error("This core-member profile is no longer available.");
+
+  const existingForUser = await db.select().from(memberProfileClaims).where(eq(memberProfileClaims.userId, input.userId)).limit(1);
+  if (existingForUser[0]) {
+    if (existingForUser[0].memberId !== input.memberId) throw new Error("This account already has a member-profile claim. Ask a community administrator for help.");
+    if (existingForUser[0].status === "approved") return { status: "approved" as const };
+    if (existingForUser[0].status === "pending") return { status: "pending" as const };
+    await db.update(memberProfileClaims).set({ status: "pending", reviewedByUserId: null, reviewedAt: null }).where(eq(memberProfileClaims.id, existingForUser[0].id));
+    return { status: "pending" as const };
+  }
+
+  const existingForMember = await db.select({ id: memberProfileClaims.id }).from(memberProfileClaims).where(eq(memberProfileClaims.memberId, input.memberId)).limit(1);
+  if (existingForMember[0]) throw new Error("This core-member profile is already claimed or awaiting verification.");
+  await db.insert(memberProfileClaims).values({ memberId: input.memberId, userId: input.userId });
+  return { status: "pending" as const };
+}
+
+export async function listMemberProfileClaims() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: memberProfileClaims.id,
+    memberId: memberProfileClaims.memberId,
+    memberName: communityMembers.fullName,
+    memberTeam: communityMembers.team,
+    claimantName: users.name,
+    status: memberProfileClaims.status,
+    createdAt: memberProfileClaims.createdAt,
+  }).from(memberProfileClaims)
+    .innerJoin(communityMembers, eq(memberProfileClaims.memberId, communityMembers.id))
+    .innerJoin(users, eq(memberProfileClaims.userId, users.id))
+    .where(eq(memberProfileClaims.status, "pending"))
+    .orderBy(desc(memberProfileClaims.updatedAt));
+}
+
+export async function reviewMemberProfileClaim(input: { claimId: number; reviewerUserId: number; approved: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("The member-profile service is temporarily unavailable.");
+  const claim = await db.select().from(memberProfileClaims).where(eq(memberProfileClaims.id, input.claimId)).limit(1);
+  if (!claim[0] || claim[0].status !== "pending") throw new Error("This member-profile claim is no longer awaiting review.");
+  await db.update(memberProfileClaims).set({
+    status: input.approved ? "approved" : "rejected",
+    reviewedByUserId: input.reviewerUserId,
+    reviewedAt: new Date(),
+  }).where(eq(memberProfileClaims.id, claim[0].id));
+  return { approved: input.approved } as const;
+}
+
+export async function submitMemberProfileDetails(input: MemberProfileSubmissionInput) {
+  const db = await getDb();
+  if (!db) throw new Error("The member-profile service is temporarily unavailable.");
+  await seedCommunityContent();
+
+  const member = await db.select({ id: communityMembers.id }).from(communityMembers)
+    .where(and(eq(communityMembers.id, input.memberId), eq(communityMembers.active, 1))).limit(1);
+  if (!member[0]) throw new Error("This core-member profile is no longer available.");
+
+  if (!input.allowAdmin) {
+    const claim = await db.select({ memberId: memberProfileClaims.memberId }).from(memberProfileClaims)
+      .where(and(eq(memberProfileClaims.memberId, input.memberId), eq(memberProfileClaims.userId, input.userId), eq(memberProfileClaims.status, "approved"))).limit(1);
+    if (!canSubmitMemberProfile({ claimedMemberId: claim[0]?.memberId, requestedMemberId: input.memberId, allowAdmin: input.allowAdmin })) {
+      throw new Error("Your member-profile claim must be approved before you can submit profile details.");
+    }
+  }
+
+  const values = {
+    branch: input.branch?.trim() || null,
+    yearOfStudy: input.yearOfStudy?.trim() || null,
+    usn: input.usn?.trim() || null,
+    linkedinUrl: input.linkedinUrl?.trim() || null,
+    contactNumber: input.contactNumber?.trim() || null,
+    showAcademicDetails: input.showAcademicDetails ? 1 : 0,
+    showLinkedin: input.showLinkedin ? 1 : 0,
+    showContactNumber: input.showContactNumber ? 1 : 0,
+    status: "pending" as const,
+    reviewedByUserId: null,
+    reviewedAt: null,
+  };
+
+  const existing = await db.select({ id: memberProfileSubmissions.id }).from(memberProfileSubmissions)
+    .where(and(eq(memberProfileSubmissions.memberId, input.memberId), eq(memberProfileSubmissions.userId, input.userId))).limit(1);
+  if (existing[0]) {
+    await db.update(memberProfileSubmissions).set(values).where(eq(memberProfileSubmissions.id, existing[0].id));
+  } else {
+    await db.insert(memberProfileSubmissions).values({ ...values, memberId: input.memberId, userId: input.userId });
+  }
+  return { success: true } as const;
+}
+
+export async function listMemberProfileSubmissions() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: memberProfileSubmissions.id,
+    memberId: memberProfileSubmissions.memberId,
+    memberName: communityMembers.fullName,
+    memberTeam: communityMembers.team,
+    submitterName: users.name,
+    branch: memberProfileSubmissions.branch,
+    yearOfStudy: memberProfileSubmissions.yearOfStudy,
+    usn: memberProfileSubmissions.usn,
+    linkedinUrl: memberProfileSubmissions.linkedinUrl,
+    contactNumber: memberProfileSubmissions.contactNumber,
+    showAcademicDetails: memberProfileSubmissions.showAcademicDetails,
+    showLinkedin: memberProfileSubmissions.showLinkedin,
+    showContactNumber: memberProfileSubmissions.showContactNumber,
+    status: memberProfileSubmissions.status,
+    createdAt: memberProfileSubmissions.createdAt,
+  }).from(memberProfileSubmissions)
+    .innerJoin(communityMembers, eq(memberProfileSubmissions.memberId, communityMembers.id))
+    .innerJoin(users, eq(memberProfileSubmissions.userId, users.id))
+    .where(eq(memberProfileSubmissions.status, "pending"))
+    .orderBy(desc(memberProfileSubmissions.updatedAt));
+}
+
+export async function reviewMemberProfileSubmission(input: { submissionId: number; reviewerUserId: number; approved: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("The member-profile service is temporarily unavailable.");
+  const submission = await db.select().from(memberProfileSubmissions).where(eq(memberProfileSubmissions.id, input.submissionId)).limit(1);
+  if (!submission[0] || submission[0].status !== "pending") throw new Error("This profile submission is no longer awaiting review.");
+
+  const reviewValues = {
+    status: input.approved ? "approved" as const : "rejected" as const,
+    reviewedByUserId: input.reviewerUserId,
+    reviewedAt: new Date(),
+  };
+  if (input.approved) {
+    await db.update(communityMembers).set({
+      branch: submission[0].branch,
+      yearOfStudy: submission[0].yearOfStudy,
+      usn: submission[0].usn,
+      linkedinUrl: submission[0].linkedinUrl,
+      contactNumber: submission[0].contactNumber,
+      showAcademicDetails: submission[0].showAcademicDetails,
+      showLinkedin: submission[0].showLinkedin,
+      showContactNumber: submission[0].showContactNumber,
+    }).where(eq(communityMembers.id, submission[0].memberId));
+  }
+  await db.update(memberProfileSubmissions).set(reviewValues).where(eq(memberProfileSubmissions.id, submission[0].id));
+  return { approved: input.approved } as const;
 }
 
 export async function getStudentActivity(userId: number) {

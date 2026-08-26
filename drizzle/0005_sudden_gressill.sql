@@ -1,0 +1,20 @@
+CREATE TABLE `memberProfileSubmissions` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`memberId` int NOT NULL,
+	`userId` int NOT NULL,
+	`branch` varchar(128),
+	`yearOfStudy` varchar(32),
+	`usn` varchar(64),
+	`linkedinUrl` varchar(256),
+	`contactNumber` varchar(32),
+	`showAcademicDetails` int NOT NULL DEFAULT 0,
+	`showLinkedin` int NOT NULL DEFAULT 0,
+	`showContactNumber` int NOT NULL DEFAULT 0,
+	`status` enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+	`reviewedByUserId` int,
+	`reviewedAt` timestamp,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `memberProfileSubmissions_id` PRIMARY KEY(`id`),
+	CONSTRAINT `member_profile_submission_user_member_unique` UNIQUE(`userId`,`memberId`)
+);

@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { startLogin } from "@/const";
+import "../member-self-service.css";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -26,6 +27,7 @@ import {
   Phone,
   Rocket,
   Send,
+  ShieldCheck,
   Sparkles,
   UserRound,
   UsersRound,
@@ -86,15 +88,19 @@ export default function Home() {
   const announcementsQuery = trpc.community.announcements.useQuery();
   const membersQuery = trpc.community.members.useQuery();
   const activityQuery = trpc.student.activity.useQuery(undefined, { enabled: isAuthenticated, retry: false });
+  const myMemberProfileClaimQuery = trpc.community.myMemberProfileClaim.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [eventDialog, setEventDialog] = useState<EventRecord | null>(null);
   const [applicationOpen, setApplicationOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [memberTeam, setMemberTeam] = useState("All teams");
   const [selectedMember, setSelectedMember] = useState<MemberRecord | null>(null);
+  const [profileSubmissionMember, setProfileSubmissionMember] = useState<MemberRecord | null>(null);
+  const [profileClaimMember, setProfileClaimMember] = useState<MemberRecord | null>(null);
   const [requestedMemberSlug, setRequestedMemberSlug] = useState(() => new URLSearchParams(window.location.search).get("member"));
   const [application, setApplication] = useState({ branch: "", yearOfStudy: "", linkedinUrl: "", skills: "", motivation: "" });
   const [contact, setContact] = useState({ name: "", email: "", subject: "", message: "" });
+  const [profileDetails, setProfileDetails] = useState({ branch: "", yearOfStudy: "", usn: "", linkedinUrl: "", contactNumber: "", showAcademicDetails: false, showLinkedin: false, showContactNumber: false, acknowledgeOwnership: false });
 
   const registerMutation = trpc.student.register.useMutation({
     onSuccess: async result => {
@@ -120,6 +126,39 @@ export default function Home() {
       toast.success("Thanks — the community team will receive your enquiry.");
     },
     onError: error => toast.error(error.message || "Unable to send your enquiry."),
+  });
+  const profileSubmissionMutation = trpc.community.submitMyMemberProfile.useMutation({
+    onSuccess: async () => {
+      await utils.community.pendingMemberProfileSubmissions.invalidate();
+      setProfileSubmissionMember(null);
+      setProfileDetails({ branch: "", yearOfStudy: "", usn: "", linkedinUrl: "", contactNumber: "", showAcademicDetails: false, showLinkedin: false, showContactNumber: false, acknowledgeOwnership: false });
+      toast.success("Your profile details were submitted for community review. Nothing is public until approval.");
+    },
+    onError: error => toast.error(error.message || "Unable to submit your member details."),
+  });
+  const profileClaimMutation = trpc.community.requestMemberProfileClaim.useMutation({
+    onSuccess: async result => {
+      await utils.community.myMemberProfileClaim.invalidate();
+      setProfileClaimMember(null);
+      toast.success(result.status === "approved" ? "Your member profile is verified. You can now add details." : "Your profile-verification request is awaiting community approval.");
+    },
+    onError: error => toast.error(error.message || "Unable to request profile verification."),
+  });
+  const pendingProfileClaimsQuery = trpc.community.pendingMemberProfileClaims.useQuery(undefined, { enabled: isAuthenticated && user?.role === "admin" });
+  const reviewProfileClaimMutation = trpc.community.reviewMemberProfileClaim.useMutation({
+    onSuccess: async result => {
+      await Promise.all([utils.community.pendingMemberProfileClaims.invalidate(), utils.community.myMemberProfileClaim.invalidate()]);
+      toast.success(result.approved ? "Member-profile claim approved." : "Member-profile claim declined.");
+    },
+    onError: error => toast.error(error.message || "Unable to review this profile claim."),
+  });
+  const pendingProfileSubmissionsQuery = trpc.community.pendingMemberProfileSubmissions.useQuery(undefined, { enabled: isAuthenticated && user?.role === "admin" });
+  const reviewProfileMutation = trpc.community.reviewMemberProfileSubmission.useMutation({
+    onSuccess: async result => {
+      await Promise.all([utils.community.members.invalidate(), utils.community.pendingMemberProfileSubmissions.invalidate()]);
+      toast.success(result.approved ? "Profile details approved and published according to consent choices." : "Profile submission declined.");
+    },
+    onError: error => toast.error(error.message || "Unable to review this profile submission."),
   });
 
   const openApplication = () => {
@@ -148,6 +187,32 @@ export default function Home() {
   const submitContact = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     contactMutation.mutate(contact);
+  };
+
+  const openProfileDetailsForm = (member: MemberRecord) => {
+    if (!isAuthenticated) {
+      toast.message("Sign in to submit details for your member profile.");
+      startLogin();
+      return;
+    }
+    const claim = myMemberProfileClaimQuery.data;
+    if (user?.role !== "admin" && (claim?.status !== "approved" || claim.memberId !== member.id)) {
+      setSelectedMember(null);
+      setProfileClaimMember(member);
+      return;
+    }
+    setSelectedMember(null);
+    setProfileSubmissionMember(member);
+  };
+
+  const submitProfileDetails = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!profileSubmissionMember || !profileDetails.acknowledgeOwnership) return;
+    profileSubmissionMutation.mutate({
+      memberId: profileSubmissionMember.id,
+      ...profileDetails,
+      acknowledgeOwnership: true,
+    });
   };
 
   const closeMemberProfile = () => {
@@ -264,7 +329,9 @@ export default function Home() {
         </div>
       </section>
 
-      {isAuthenticated && <section className="student-space page-width"><div><span className="section-number">YOUR COMMUNITY SPACE</span><h2>Welcome back,<br /><em>{firstName}.</em></h2></div><div className="student-activity"><div className="activity-stat"><span>Event registrations</span><strong>{activityQuery.data?.registrations.length ?? 0}</strong></div><div className="activity-stat"><span>Program interest</span><strong>{activityQuery.data?.application?.status ? activityQuery.data.application.status.replace("_", " ") : "Not submitted"}</strong></div><button className="secondary-cta" type="button" onClick={openApplication}>Update your interest <ArrowRight size={16} /></button></div></section>}
+      {isAuthenticated && <section className="student-space page-width"><div><span className="section-number">YOUR COMMUNITY SPACE</span><h2>Welcome back,<br /><em>{firstName}.</em></h2></div><div className="student-activity"><div className="activity-stat"><span>Event registrations</span><strong>{activityQuery.data?.registrations.length ?? 0}</strong></div><div className="activity-stat"><span>Program interest</span><strong>{activityQuery.data?.application?.status ? activityQuery.data.application.status.replace("_", " ") : "Not submitted"}</strong></div><button className="secondary-cta" type="button" onClick={openApplication}>Update your interest <ArrowRight size={16} /></button>{user?.role === "admin" && <div className="profile-review-panel"><div><span>MEMBER PROFILE REVIEW</span><strong>{pendingProfileSubmissionsQuery.data?.length ?? 0} pending submission{pendingProfileSubmissionsQuery.data?.length === 1 ? "" : "s"}</strong><p>Approve only after confirming the submitted details belong to the selected core member.</p></div>{pendingProfileSubmissionsQuery.data?.map(submission => <article key={submission.id}><div><strong>{submission.memberName}</strong><span>{submission.memberTeam} · submitted by {submission.submitterName || "signed-in member"}</span></div><div className="review-consent"><span>Academic: {submission.showAcademicDetails ? "Public" : "Private"}</span><span>LinkedIn: {submission.showLinkedin ? "Public" : "Private"}</span><span>Contact: {submission.showContactNumber ? "Public" : "Private"}</span></div><div className="review-actions"><button type="button" onClick={() => reviewProfileMutation.mutate({ submissionId: submission.id, approved: true })} disabled={reviewProfileMutation.isPending}>Approve</button><button type="button" onClick={() => reviewProfileMutation.mutate({ submissionId: submission.id, approved: false })} disabled={reviewProfileMutation.isPending}>Decline</button></div></article>)}</div>}</div></section>}
+
+      {isAuthenticated && user?.role === "admin" && <section className="page-width profile-claims-review"><div><span className="section-number">MEMBER IDENTITY REVIEW</span><h2>Verify profile<br /><em>ownership.</em></h2><p>Approve a claim only after confirming that the signed-in student is the named core member. One account and one member profile can be linked.</p></div><div className="profile-review-panel"><div><span>PROFILE CLAIMS</span><strong>{pendingProfileClaimsQuery.data?.length ?? 0} pending claim{pendingProfileClaimsQuery.data?.length === 1 ? "" : "s"}</strong></div>{pendingProfileClaimsQuery.data?.map(claim => <article key={claim.id}><div><strong>{claim.memberName}</strong><span>{claim.memberTeam} · requested by {claim.claimantName || "signed-in member"}</span></div><div className="review-actions"><button type="button" onClick={() => reviewProfileClaimMutation.mutate({ claimId: claim.id, approved: true })} disabled={reviewProfileClaimMutation.isPending}>Verify owner</button><button type="button" onClick={() => reviewProfileClaimMutation.mutate({ claimId: claim.id, approved: false })} disabled={reviewProfileClaimMutation.isPending}>Decline</button></div></article>)}</div></section>}
 
       <section className="connect-section" id="connect">
         <div className="page-width connect-grid"><div><span className="section-number">07 / CONNECT</span><h2>Let’s build a<br /><em>useful network.</em></h2><p>Have an idea for a session, collaboration, or campus project? Send the community team a note.</p></div><div className="connect-card"><MessageSquare size={25} /><h3>Start a conversation</h3><p>Share a question, propose a session, or ask how to get involved.</p><button className="primary-cta" type="button" onClick={() => setContactOpen(true)}>Send an enquiry <Send size={16} /></button></div></div>
@@ -284,8 +351,16 @@ export default function Home() {
         <DialogContent className="community-dialog form-dialog"><DialogHeader><span className="dialog-label">CONNECT WITH THE COMMUNITY</span><DialogTitle>Send an enquiry.</DialogTitle><DialogDescription>This form is for community ideas and general questions. For official institute enquiries, use the institute contact channels.</DialogDescription></DialogHeader><form onSubmit={submitContact} className="community-form"><div className="form-row"><label>Name<input required value={contact.name} onChange={e => setContact({ ...contact, name: e.target.value })} placeholder="Your name" /></label><label>Email<input required type="email" value={contact.email} onChange={e => setContact({ ...contact, email: e.target.value })} placeholder="name@example.com" /></label></div><label>Subject<input required value={contact.subject} onChange={e => setContact({ ...contact, subject: e.target.value })} placeholder="What would you like to discuss?" /></label><label>Message<textarea required minLength={20} value={contact.message} onChange={e => setContact({ ...contact, message: e.target.value })} placeholder="Write your note here…" /></label><button className="primary-cta dialog-action" type="submit" disabled={contactMutation.isPending}>{contactMutation.isPending ? "Sending…" : "Send enquiry"}<Send size={16} /></button></form></DialogContent>
       </Dialog>
 
+      <Dialog open={Boolean(profileSubmissionMember)} onOpenChange={open => !open && setProfileSubmissionMember(null)}>
+        <DialogContent className="community-dialog form-dialog"><DialogHeader><span className="dialog-label">MEMBER PROFILE DETAILS</span><DialogTitle>Add details for {profileSubmissionMember?.fullName}</DialogTitle><DialogDescription>Your information is sent to the community review queue first. It is not public unless it is approved and you select public display below.</DialogDescription></DialogHeader><form onSubmit={submitProfileDetails} className="community-form"><div className="form-row"><label>Branch<input value={profileDetails.branch} onChange={e => setProfileDetails({ ...profileDetails, branch: e.target.value })} placeholder="e.g. Computer Science" /></label><label>Year of study<input value={profileDetails.yearOfStudy} onChange={e => setProfileDetails({ ...profileDetails, yearOfStudy: e.target.value })} placeholder="e.g. Third year" /></label></div><label>USN<input value={profileDetails.usn} onChange={e => setProfileDetails({ ...profileDetails, usn: e.target.value })} placeholder="Enter your USN" /></label><label>LinkedIn URL <span>(optional)</span><input type="url" value={profileDetails.linkedinUrl} onChange={e => setProfileDetails({ ...profileDetails, linkedinUrl: e.target.value })} placeholder="https://linkedin.com/in/…" /></label><label>Contact number <span>(optional)</span><input type="tel" value={profileDetails.contactNumber} onChange={e => setProfileDetails({ ...profileDetails, contactNumber: e.target.value })} placeholder="Enter your contact number" /></label><div className="consent-panel"><strong>Choose what may appear publicly after approval</strong><label className="consent-check"><input type="checkbox" checked={profileDetails.showAcademicDetails} onChange={e => setProfileDetails({ ...profileDetails, showAcademicDetails: e.target.checked })} /><span>Show my Branch, Year, and USN</span></label><label className="consent-check"><input type="checkbox" checked={profileDetails.showLinkedin} onChange={e => setProfileDetails({ ...profileDetails, showLinkedin: e.target.checked })} /><span>Show my LinkedIn link</span></label><label className="consent-check"><input type="checkbox" checked={profileDetails.showContactNumber} onChange={e => setProfileDetails({ ...profileDetails, showContactNumber: e.target.checked })} /><span>Show my contact number</span></label></div><label className="consent-check ownership-check"><input required type="checkbox" checked={profileDetails.acknowledgeOwnership} onChange={e => setProfileDetails({ ...profileDetails, acknowledgeOwnership: e.target.checked })} /><span>I confirm these are my own details and I understand the selected fields can be displayed only after community approval.</span></label><button className="primary-cta dialog-action" type="submit" disabled={profileSubmissionMutation.isPending}>{profileSubmissionMutation.isPending ? "Submitting details…" : "Submit for review"}<ShieldCheck size={16} /></button></form></DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(profileClaimMember)} onOpenChange={open => !open && setProfileClaimMember(null)}>
+        <DialogContent className="community-dialog form-dialog"><DialogHeader><span className="dialog-label">MEMBER PROFILE VERIFICATION</span><DialogTitle>Request access for {profileClaimMember?.fullName}</DialogTitle><DialogDescription>To protect every member, a community administrator must verify your ownership of this profile before you can submit profile details.</DialogDescription></DialogHeader><form onSubmit={event => { event.preventDefault(); if (profileClaimMember) profileClaimMutation.mutate({ memberId: profileClaimMember.id, acknowledgeIdentity: true }); }} className="community-form"><div className="dialog-body"><ShieldCheck size={21} /><p>One signed-in account can be linked to one core-member profile. This request does not make any data public.</p></div><label className="consent-check ownership-check"><input required type="checkbox" /><span>I confirm that I am the named core member and request verification for this profile.</span></label><button className="primary-cta dialog-action" type="submit" disabled={profileClaimMutation.isPending}>{profileClaimMutation.isPending ? "Requesting verification…" : "Request profile verification"}<ShieldCheck size={16} /></button></form></DialogContent>
+      </Dialog>
+
       <Dialog open={Boolean(selectedMember)} onOpenChange={open => !open && closeMemberProfile()}>
-        <DialogContent className="community-dialog member-profile-dialog"><DialogHeader><span className="dialog-label">AWS COMMUNITY · MEMBER PROFILE</span><DialogTitle>{selectedMember?.fullName}</DialogTitle><DialogDescription>{selectedMember?.position} · {selectedMember?.team}</DialogDescription></DialogHeader><div className="profile-identity"><span className="profile-avatar"><UserRound size={24} /></span><div><strong>{selectedMember?.team}</strong><span>Core member</span></div></div><div className="member-profile-grid"><div className="profile-detail"><GraduationCap size={18} /><div><span>Branch</span><strong>{selectedMember?.branch || "Not publicly listed"}</strong></div></div><div className="profile-detail"><BookOpen size={18} /><div><span>Year</span><strong>{selectedMember?.yearOfStudy || "Not publicly listed"}</strong></div></div><div className="profile-detail"><LockKeyhole size={18} /><div><span>USN</span><strong>{selectedMember?.usn || "Not publicly listed"}</strong></div></div><div className="profile-detail"><Linkedin size={18} /><div><span>LinkedIn</span>{selectedMember?.linkedinUrl ? <a href={selectedMember.linkedinUrl} target="_blank" rel="noreferrer">View LinkedIn <ArrowUpRight size={12} /></a> : <strong>Not publicly listed</strong>}</div></div><div className="profile-detail profile-detail-wide"><Phone size={18} /><div><span>Contact number</span><strong>{selectedMember?.contactNumber || "Not publicly listed"}</strong></div></div></div><p className="profile-privacy"><LockKeyhole size={14} />Academic details, USN, LinkedIn, and contact information appear only after the named member has authorised public display.</p></DialogContent>
+        <DialogContent className="community-dialog member-profile-dialog"><DialogHeader><span className="dialog-label">AWS COMMUNITY · MEMBER PROFILE</span><DialogTitle>{selectedMember?.fullName}</DialogTitle><DialogDescription>{selectedMember?.position} · {selectedMember?.team}</DialogDescription></DialogHeader><div className="profile-identity"><span className="profile-avatar"><UserRound size={24} /></span><div><strong>{selectedMember?.team}</strong><span>Core member</span></div></div><div className="member-profile-grid"><div className="profile-detail"><GraduationCap size={18} /><div><span>Branch</span><strong>{selectedMember?.branch || "Not publicly listed"}</strong></div></div><div className="profile-detail"><BookOpen size={18} /><div><span>Year</span><strong>{selectedMember?.yearOfStudy || "Not publicly listed"}</strong></div></div><div className="profile-detail"><LockKeyhole size={18} /><div><span>USN</span><strong>{selectedMember?.usn || "Not publicly listed"}</strong></div></div><div className="profile-detail"><Linkedin size={18} /><div><span>LinkedIn</span>{selectedMember?.linkedinUrl ? <a href={selectedMember.linkedinUrl} target="_blank" rel="noreferrer">View LinkedIn <ArrowUpRight size={12} /></a> : <strong>Not publicly listed</strong>}</div></div><div className="profile-detail profile-detail-wide"><Phone size={18} /><div><span>Contact number</span><strong>{selectedMember?.contactNumber || "Not publicly listed"}</strong></div></div></div><p className="profile-privacy"><LockKeyhole size={14} />Academic details, USN, LinkedIn, and contact information appear only after the named member has authorised public display.</p><button className="secondary-cta profile-details-action" type="button" onClick={() => selectedMember && openProfileDetailsForm(selectedMember)}>{user?.role === "admin" || (myMemberProfileClaimQuery.data?.status === "approved" && myMemberProfileClaimQuery.data.memberId === selectedMember?.id) ? "Add or update my details" : myMemberProfileClaimQuery.data?.status === "pending" && myMemberProfileClaimQuery.data.memberId === selectedMember?.id ? "Profile verification pending" : "Request profile verification"}<ArrowRight size={16} /></button></DialogContent>
       </Dialog>
     </main>
   );
