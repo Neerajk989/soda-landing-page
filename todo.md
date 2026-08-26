@@ -10,3 +10,6 @@
 - [x] Authenticated product configuration and cart updates were intentionally skipped at the user's request.
 - [x] Validate the mobile configurator controls and account-aware cart action through the responsive configuration deep link and mobile layout review.
 - [x] Add cart-operation helper tests for add, quantity update, removal, and total-summary behavior.
+- [ ] Correct the restored Soda build asset base for the root public domain and verify that the deployed page renders.
+- [ ] Publish a checkpoint containing the restored Soda root-domain asset fix.
+- [ ] Confirm the cache-busted public deployment renders the restored Soda interface.
