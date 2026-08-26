@@ -1,80 +1,47 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { announcements, builderApplications, communityEvents, communityMembers, contactEnquiries, eventRegistrations, InsertUser, memberProfileClaims, memberProfileSubmissions, users } from "../drizzle/schema";
+import { cartItems, InsertUser, products, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
-export const COMMUNITY_EVENTS = [
+export const PACK_SIZES = ["single", "six", "twelve"] as const;
+export const CADENCES = ["one_time", "weekly", "monthly"] as const;
+export type PackSize = (typeof PACK_SIZES)[number];
+export type Cadence = (typeof CADENCES)[number];
+
+export const CATALOG_PRODUCTS = [
   {
-    slug: "student-builder-orientation",
-    title: "Student Builder Orientation",
-    description: "A welcome session for students who want to learn, build, and contribute to an AWS-focused campus community.",
-    scheduleLabel: "Registration opening soon",
-    location: "S.B. Jain campus",
-    format: "in_person" as const,
-    audience: "All students",
+    slug: "diet-classic",
+    name: "Diet Classic",
+    description: "Crisp botanical refreshment with zero sugar and a clean emerald finish.",
+    basePriceCents: 299,
+    accent: "#0b8a78",
   },
   {
-    slug: "cloud-foundations-study-circle",
-    title: "Cloud Foundations Study Circle",
-    description: "A peer-learning session built around core cloud concepts, practical study habits, and project readiness.",
-    scheduleLabel: "Schedule to be announced",
-    location: "Learning lab · S.B. Jain campus",
-    format: "hybrid" as const,
-    audience: "Beginners and builders",
+    slug: "zero-lime",
+    name: "Zero Lime",
+    description: "A bright, blue-lime twist with the same clean zero-sugar finish.",
+    basePriceCents: 299,
+    accent: "#0b4f8a",
   },
 ] as const;
 
-export const ANNOUNCEMENTS = [
-  { title: "Student Builder Program interest form", body: "Share your learning goals and project interests to receive program updates from the campus community team.", category: "program" as const },
-  { title: "New to cloud learning?", body: "Explore the foundations track and join the community to meet peers building their first cloud projects.", category: "resource" as const },
-] as const;
+export type CatalogProduct = (typeof CATALOG_PRODUCTS)[number];
 
-export const PROGRAM_TRACKS = ["Cloud foundations", "Serverless & APIs", "Data & AI", "Security & architecture"] as const;
+export function calculatePriceCents(basePriceCents: number, packSize: PackSize, cadence: Cadence) {
+  const packMultipliers: Record<PackSize, number> = { single: 1, six: 5.5, twelve: 10.2 };
+  const cadenceDiscounts: Record<Cadence, number> = { one_time: 0, weekly: 0.05, monthly: 0.1 };
+  return Math.round(basePriceCents * packMultipliers[packSize] * (1 - cadenceDiscounts[cadence]));
+}
 
-/** Core roster imported from the AWS Student Builder Group workbook supplied by the community. */
-export const CORE_MEMBERS = [
-  { fullName: "SARANG CHAKOLE", position: "Group Leader", team: "Community Leadership", sortOrder: 1 },
-  { fullName: "FAIZ SHAIKH", position: "Head", team: "Technical Team", sortOrder: 10 },
-  { fullName: "NEERAJ KHAPRE", position: "Co-Head", team: "Technical Team", sortOrder: 11 },
-  { fullName: "DEVANSHU KINDARLAEY", position: "Volunteer", team: "Technical Team", sortOrder: 12 },
-  { fullName: "NEVIDITA NANDURKAR", position: "Volunteer", team: "Technical Team", sortOrder: 13 },
-  { fullName: "TANUSHREE SAUNDARKAR", position: "Head", team: "Design & Content Team", sortOrder: 20 },
-  { fullName: "SANKALP KADSE", position: "Design Co-Head", team: "Design & Content Team", sortOrder: 21 },
-  { fullName: "ANSHUL MOTGHARE", position: "Content Co-Head", team: "Design & Content Team", sortOrder: 22 },
-  { fullName: "PRANAV VISPUTE", position: "Head", team: "Operational Team", sortOrder: 30 },
-  { fullName: "ISHA DHOK", position: "Co-Head", team: "Operational Team", sortOrder: 31 },
-  { fullName: "NUTAN BHOYAR", position: "Volunteer", team: "Operational Team", sortOrder: 32 },
-  { fullName: "KRUTIKA DHAVDE", position: "Volunteer", team: "Operational Team", sortOrder: 33 },
-  { fullName: "JIYA SATHAWANE", position: "Head", team: "Marketing & PR Team", sortOrder: 40 },
-  { fullName: "ANMOL CHAUBEY", position: "Co-Head", team: "Marketing & PR Team", sortOrder: 41 },
-  { fullName: "VAISHNAVI SATHONE", position: "Volunteer", team: "Marketing & PR Team", sortOrder: 42 },
-  { fullName: "GAURI SANGEWAR", position: "Volunteer", team: "Marketing & PR Team", sortOrder: 43 },
-  { fullName: "AREEBA QURESHI", position: "Head", team: "Event Team", sortOrder: 50 },
-  { fullName: "VANSH LUTE", position: "Co-Head", team: "Event Team", sortOrder: 51 },
-  { fullName: "PUSHKAR MESHRAM", position: "Volunteer", team: "Event Team", sortOrder: 52 },
-  { fullName: "SHAGUN HARINKHEDE", position: "Volunteer", team: "Event Team", sortOrder: 53 },
-] as const;
+export function clampCartQuantity(quantity: number) {
+  return Math.max(1, Math.min(24, Math.round(quantity)));
+}
 
-export type MemberProfileImport = {
-  fullName: string;
-  branch?: string;
-  yearOfStudy?: string;
-  usn?: string;
-  linkedinUrl?: string;
-  contactNumber?: string;
-  showAcademicDetails: boolean;
-  showLinkedin: boolean;
-  showContactNumber: boolean;
-};
-
-export type MemberProfileSubmissionInput = Omit<MemberProfileImport, "fullName"> & {
-  memberId: number;
-  userId: number;
-  allowAdmin?: boolean;
-};
-
-export function canSubmitMemberProfile(input: { claimedMemberId?: number; requestedMemberId: number; allowAdmin?: boolean }) {
-  return Boolean(input.allowAdmin || input.claimedMemberId === input.requestedMemberId);
+export function summarizeCartItems(items: Array<{ unitPriceCents: number; quantity: number }>) {
+  return {
+    subtotalCents: items.reduce((total, item) => total + item.unitPriceCents * clampCartQuantity(item.quantity), 0),
+    totalItems: items.reduce((total, item) => total + clampCartQuantity(item.quantity), 0),
+  };
 }
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -117,285 +84,87 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
-async function seedCommunityContent() {
+async function seedCatalog() {
   const db = await getDb();
   if (!db) return;
-  for (const event of COMMUNITY_EVENTS) {
-    const existing = await db.select({ id: communityEvents.id }).from(communityEvents).where(eq(communityEvents.slug, event.slug)).limit(1);
-    if (existing.length === 0) await db.insert(communityEvents).values({ ...event, active: 1 });
+  for (const product of CATALOG_PRODUCTS) {
+    const existing = await db.select({ id: products.id }).from(products).where(eq(products.slug, product.slug)).limit(1);
+    if (existing.length === 0) await db.insert(products).values({ ...product, active: 1 });
   }
-  for (const announcement of ANNOUNCEMENTS) {
-    await db.insert(announcements).values({ ...announcement, active: 1 }).onDuplicateKeyUpdate({
-      set: { body: announcement.body, category: announcement.category, active: 1 },
+}
+
+export async function listProducts() {
+  const db = await getDb();
+  if (!db) return CATALOG_PRODUCTS.map(product => ({ ...product, id: 0, active: 1 }));
+  await seedCatalog();
+  return db.select().from(products).where(eq(products.active, 1));
+}
+
+export async function getCartSummary(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("The cart service is temporarily unavailable.");
+  const items = await db
+    .select({
+      id: cartItems.id,
+      productSlug: products.slug,
+      productName: products.name,
+      packSize: cartItems.packSize,
+      cadence: cartItems.cadence,
+      unitPriceCents: cartItems.unitPriceCents,
+      quantity: cartItems.quantity,
+      accent: products.accent,
+    })
+    .from(cartItems)
+    .innerJoin(products, eq(cartItems.productId, products.id))
+    .where(eq(cartItems.userId, userId));
+
+  return { items, ...summarizeCartItems(items) };
+}
+
+export async function addCartItem(input: { userId: number; productSlug: string; packSize: PackSize; cadence: Cadence; quantity: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("The cart service is temporarily unavailable.");
+  await seedCatalog();
+  const product = await db.select().from(products).where(and(eq(products.slug, input.productSlug), eq(products.active, 1))).limit(1);
+  if (!product[0]) throw new Error("That flavor is not currently available.");
+
+  const unitPriceCents = calculatePriceCents(product[0].basePriceCents, input.packSize, input.cadence);
+  const existing = await db
+    .select({ id: cartItems.id, quantity: cartItems.quantity })
+    .from(cartItems)
+    .where(and(
+      eq(cartItems.userId, input.userId),
+      eq(cartItems.productId, product[0].id),
+      eq(cartItems.packSize, input.packSize),
+      eq(cartItems.cadence, input.cadence),
+    ))
+    .limit(1);
+
+  if (existing[0]) {
+    await db.update(cartItems).set({ quantity: clampCartQuantity(existing[0].quantity + input.quantity), unitPriceCents }).where(eq(cartItems.id, existing[0].id));
+  } else {
+    await db.insert(cartItems).values({
+      userId: input.userId,
+      productId: product[0].id,
+      packSize: input.packSize,
+      cadence: input.cadence,
+      unitPriceCents,
+      quantity: input.quantity,
     });
   }
-  for (const member of CORE_MEMBERS) {
-    await db.insert(communityMembers).values({ ...member, active: 1 }).onDuplicateKeyUpdate({
-      set: { position: member.position, team: member.team, sortOrder: member.sortOrder, active: 1 },
-    });
-  }
+  return getCartSummary(input.userId);
 }
 
-export async function listCommunityEvents() {
+export async function updateCartItem(input: { userId: number; cartItemId: number; quantity: number }) {
   const db = await getDb();
-  if (!db) return COMMUNITY_EVENTS.map(event => ({ ...event, id: 0, active: 1 }));
-  await seedCommunityContent();
-  return db.select().from(communityEvents).where(eq(communityEvents.active, 1));
+  if (!db) throw new Error("The cart service is temporarily unavailable.");
+  await db.update(cartItems).set({ quantity: input.quantity }).where(and(eq(cartItems.id, input.cartItemId), eq(cartItems.userId, input.userId)));
+  return getCartSummary(input.userId);
 }
 
-export async function listAnnouncements() {
+export async function removeCartItem(input: { userId: number; cartItemId: number }) {
   const db = await getDb();
-  if (!db) return ANNOUNCEMENTS.map((announcement, index) => ({ ...announcement, id: -(index + 1), active: 1 }));
-  await seedCommunityContent();
-  return db.select().from(announcements).where(eq(announcements.active, 1)).orderBy(desc(announcements.createdAt));
-}
-
-export async function listCommunityMembers() {
-  const db = await getDb();
-  if (!db) return CORE_MEMBERS.map((member, index) => ({ ...member, id: -(index + 1), active: 1 }));
-  await seedCommunityContent();
-  const members = await db.select().from(communityMembers).where(eq(communityMembers.active, 1)).orderBy(communityMembers.sortOrder);
-  return members.map(member => ({
-    id: member.id,
-    fullName: member.fullName,
-    position: member.position,
-    team: member.team,
-    sortOrder: member.sortOrder,
-    active: member.active,
-    branch: member.showAcademicDetails ? member.branch : null,
-    yearOfStudy: member.showAcademicDetails ? member.yearOfStudy : null,
-    usn: member.showAcademicDetails ? member.usn : null,
-    linkedinUrl: member.showLinkedin ? member.linkedinUrl : null,
-    contactNumber: member.showContactNumber ? member.contactNumber : null,
-    hasProfileDetails: Boolean(member.showAcademicDetails || member.showLinkedin || member.showContactNumber),
-  }));
-}
-
-export async function importMemberProfiles(profiles: MemberProfileImport[]) {
-  const db = await getDb();
-  if (!db) throw new Error("The member-profile service is temporarily unavailable.");
-
-  let updated = 0;
-  for (const profile of profiles) {
-    const existing = await db.select({ id: communityMembers.id }).from(communityMembers).where(eq(communityMembers.fullName, profile.fullName)).limit(1);
-    if (!existing[0]) continue;
-    await db.update(communityMembers).set({
-      branch: profile.branch?.trim() || null,
-      yearOfStudy: profile.yearOfStudy?.trim() || null,
-      usn: profile.usn?.trim() || null,
-      linkedinUrl: profile.linkedinUrl?.trim() || null,
-      contactNumber: profile.contactNumber?.trim() || null,
-      showAcademicDetails: profile.showAcademicDetails ? 1 : 0,
-      showLinkedin: profile.showLinkedin ? 1 : 0,
-      showContactNumber: profile.showContactNumber ? 1 : 0,
-    }).where(eq(communityMembers.id, existing[0].id));
-    updated += 1;
-  }
-  return { updated } as const;
-}
-
-export async function getMyMemberProfileClaim(userId: number) {
-  const db = await getDb();
-  if (!db) return undefined;
-  const claim = await db.select({
-    id: memberProfileClaims.id,
-    memberId: memberProfileClaims.memberId,
-    memberName: communityMembers.fullName,
-    status: memberProfileClaims.status,
-  }).from(memberProfileClaims)
-    .innerJoin(communityMembers, eq(memberProfileClaims.memberId, communityMembers.id))
-    .where(eq(memberProfileClaims.userId, userId)).limit(1);
-  return claim[0];
-}
-
-export async function requestMemberProfileClaim(input: { memberId: number; userId: number }) {
-  const db = await getDb();
-  if (!db) throw new Error("The member-profile service is temporarily unavailable.");
-  await seedCommunityContent();
-
-  const member = await db.select({ id: communityMembers.id }).from(communityMembers)
-    .where(and(eq(communityMembers.id, input.memberId), eq(communityMembers.active, 1))).limit(1);
-  if (!member[0]) throw new Error("This core-member profile is no longer available.");
-
-  const existingForUser = await db.select().from(memberProfileClaims).where(eq(memberProfileClaims.userId, input.userId)).limit(1);
-  if (existingForUser[0]) {
-    if (existingForUser[0].memberId !== input.memberId) throw new Error("This account already has a member-profile claim. Ask a community administrator for help.");
-    if (existingForUser[0].status === "approved") return { status: "approved" as const };
-    if (existingForUser[0].status === "pending") return { status: "pending" as const };
-    await db.update(memberProfileClaims).set({ status: "pending", reviewedByUserId: null, reviewedAt: null }).where(eq(memberProfileClaims.id, existingForUser[0].id));
-    return { status: "pending" as const };
-  }
-
-  const existingForMember = await db.select({ id: memberProfileClaims.id }).from(memberProfileClaims).where(eq(memberProfileClaims.memberId, input.memberId)).limit(1);
-  if (existingForMember[0]) throw new Error("This core-member profile is already claimed or awaiting verification.");
-  await db.insert(memberProfileClaims).values({ memberId: input.memberId, userId: input.userId });
-  return { status: "pending" as const };
-}
-
-export async function listMemberProfileClaims() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select({
-    id: memberProfileClaims.id,
-    memberId: memberProfileClaims.memberId,
-    memberName: communityMembers.fullName,
-    memberTeam: communityMembers.team,
-    claimantName: users.name,
-    status: memberProfileClaims.status,
-    createdAt: memberProfileClaims.createdAt,
-  }).from(memberProfileClaims)
-    .innerJoin(communityMembers, eq(memberProfileClaims.memberId, communityMembers.id))
-    .innerJoin(users, eq(memberProfileClaims.userId, users.id))
-    .where(eq(memberProfileClaims.status, "pending"))
-    .orderBy(desc(memberProfileClaims.updatedAt));
-}
-
-export async function reviewMemberProfileClaim(input: { claimId: number; reviewerUserId: number; approved: boolean }) {
-  const db = await getDb();
-  if (!db) throw new Error("The member-profile service is temporarily unavailable.");
-  const claim = await db.select().from(memberProfileClaims).where(eq(memberProfileClaims.id, input.claimId)).limit(1);
-  if (!claim[0] || claim[0].status !== "pending") throw new Error("This member-profile claim is no longer awaiting review.");
-  await db.update(memberProfileClaims).set({
-    status: input.approved ? "approved" : "rejected",
-    reviewedByUserId: input.reviewerUserId,
-    reviewedAt: new Date(),
-  }).where(eq(memberProfileClaims.id, claim[0].id));
-  return { approved: input.approved } as const;
-}
-
-export async function submitMemberProfileDetails(input: MemberProfileSubmissionInput) {
-  const db = await getDb();
-  if (!db) throw new Error("The member-profile service is temporarily unavailable.");
-  await seedCommunityContent();
-
-  const member = await db.select({ id: communityMembers.id }).from(communityMembers)
-    .where(and(eq(communityMembers.id, input.memberId), eq(communityMembers.active, 1))).limit(1);
-  if (!member[0]) throw new Error("This core-member profile is no longer available.");
-
-  if (!input.allowAdmin) {
-    const claim = await db.select({ memberId: memberProfileClaims.memberId }).from(memberProfileClaims)
-      .where(and(eq(memberProfileClaims.memberId, input.memberId), eq(memberProfileClaims.userId, input.userId), eq(memberProfileClaims.status, "approved"))).limit(1);
-    if (!canSubmitMemberProfile({ claimedMemberId: claim[0]?.memberId, requestedMemberId: input.memberId, allowAdmin: input.allowAdmin })) {
-      throw new Error("Your member-profile claim must be approved before you can submit profile details.");
-    }
-  }
-
-  const values = {
-    branch: input.branch?.trim() || null,
-    yearOfStudy: input.yearOfStudy?.trim() || null,
-    usn: input.usn?.trim() || null,
-    linkedinUrl: input.linkedinUrl?.trim() || null,
-    contactNumber: input.contactNumber?.trim() || null,
-    showAcademicDetails: input.showAcademicDetails ? 1 : 0,
-    showLinkedin: input.showLinkedin ? 1 : 0,
-    showContactNumber: input.showContactNumber ? 1 : 0,
-    status: "pending" as const,
-    reviewedByUserId: null,
-    reviewedAt: null,
-  };
-
-  const existing = await db.select({ id: memberProfileSubmissions.id }).from(memberProfileSubmissions)
-    .where(and(eq(memberProfileSubmissions.memberId, input.memberId), eq(memberProfileSubmissions.userId, input.userId))).limit(1);
-  if (existing[0]) {
-    await db.update(memberProfileSubmissions).set(values).where(eq(memberProfileSubmissions.id, existing[0].id));
-  } else {
-    await db.insert(memberProfileSubmissions).values({ ...values, memberId: input.memberId, userId: input.userId });
-  }
-  return { success: true } as const;
-}
-
-export async function listMemberProfileSubmissions() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select({
-    id: memberProfileSubmissions.id,
-    memberId: memberProfileSubmissions.memberId,
-    memberName: communityMembers.fullName,
-    memberTeam: communityMembers.team,
-    submitterName: users.name,
-    branch: memberProfileSubmissions.branch,
-    yearOfStudy: memberProfileSubmissions.yearOfStudy,
-    usn: memberProfileSubmissions.usn,
-    linkedinUrl: memberProfileSubmissions.linkedinUrl,
-    contactNumber: memberProfileSubmissions.contactNumber,
-    showAcademicDetails: memberProfileSubmissions.showAcademicDetails,
-    showLinkedin: memberProfileSubmissions.showLinkedin,
-    showContactNumber: memberProfileSubmissions.showContactNumber,
-    status: memberProfileSubmissions.status,
-    createdAt: memberProfileSubmissions.createdAt,
-  }).from(memberProfileSubmissions)
-    .innerJoin(communityMembers, eq(memberProfileSubmissions.memberId, communityMembers.id))
-    .innerJoin(users, eq(memberProfileSubmissions.userId, users.id))
-    .where(eq(memberProfileSubmissions.status, "pending"))
-    .orderBy(desc(memberProfileSubmissions.updatedAt));
-}
-
-export async function reviewMemberProfileSubmission(input: { submissionId: number; reviewerUserId: number; approved: boolean }) {
-  const db = await getDb();
-  if (!db) throw new Error("The member-profile service is temporarily unavailable.");
-  const submission = await db.select().from(memberProfileSubmissions).where(eq(memberProfileSubmissions.id, input.submissionId)).limit(1);
-  if (!submission[0] || submission[0].status !== "pending") throw new Error("This profile submission is no longer awaiting review.");
-
-  const reviewValues = {
-    status: input.approved ? "approved" as const : "rejected" as const,
-    reviewedByUserId: input.reviewerUserId,
-    reviewedAt: new Date(),
-  };
-  if (input.approved) {
-    await db.update(communityMembers).set({
-      branch: submission[0].branch,
-      yearOfStudy: submission[0].yearOfStudy,
-      usn: submission[0].usn,
-      linkedinUrl: submission[0].linkedinUrl,
-      contactNumber: submission[0].contactNumber,
-      showAcademicDetails: submission[0].showAcademicDetails,
-      showLinkedin: submission[0].showLinkedin,
-      showContactNumber: submission[0].showContactNumber,
-    }).where(eq(communityMembers.id, submission[0].memberId));
-  }
-  await db.update(memberProfileSubmissions).set(reviewValues).where(eq(memberProfileSubmissions.id, submission[0].id));
-  return { approved: input.approved } as const;
-}
-
-export async function getStudentActivity(userId: number) {
-  const db = await getDb();
-  if (!db) return { registrations: [], application: undefined };
-  const registrations = await db
-    .select({ id: eventRegistrations.id, title: communityEvents.title, scheduleLabel: communityEvents.scheduleLabel, location: communityEvents.location })
-    .from(eventRegistrations)
-    .innerJoin(communityEvents, eq(eventRegistrations.eventId, communityEvents.id))
-    .where(eq(eventRegistrations.userId, userId));
-  const application = await db.select().from(builderApplications).where(eq(builderApplications.userId, userId)).limit(1);
-  return { registrations, application: application[0] };
-}
-
-export async function registerForEvent(input: { userId: number; eventSlug: string }) {
-  const db = await getDb();
-  if (!db) throw new Error("The event registration service is temporarily unavailable.");
-  await seedCommunityContent();
-  const event = await db.select().from(communityEvents).where(and(eq(communityEvents.slug, input.eventSlug), eq(communityEvents.active, 1))).limit(1);
-  if (!event[0]) throw new Error("This event is no longer available for registration.");
-  const existing = await db.select({ id: eventRegistrations.id }).from(eventRegistrations).where(and(eq(eventRegistrations.userId, input.userId), eq(eventRegistrations.eventId, event[0].id))).limit(1);
-  if (existing[0]) return { alreadyRegistered: true };
-  await db.insert(eventRegistrations).values({ userId: input.userId, eventId: event[0].id });
-  return { alreadyRegistered: false };
-}
-
-export async function submitBuilderApplication(input: { userId: number; branch: string; yearOfStudy: string; linkedinUrl?: string; skills: string; motivation: string }) {
-  const db = await getDb();
-  if (!db) throw new Error("The application service is temporarily unavailable.");
-  const existing = await db.select({ id: builderApplications.id }).from(builderApplications).where(eq(builderApplications.userId, input.userId)).limit(1);
-  if (existing[0]) {
-    await db.update(builderApplications).set({ ...input, linkedinUrl: input.linkedinUrl || null, status: "submitted" }).where(eq(builderApplications.id, existing[0].id));
-  } else {
-    await db.insert(builderApplications).values({ ...input, linkedinUrl: input.linkedinUrl || null });
-  }
-  return { success: true } as const;
-}
-
-export async function createContactEnquiry(input: { name: string; email: string; subject: string; message: string }) {
-  const db = await getDb();
-  if (!db) throw new Error("The enquiry service is temporarily unavailable.");
-  await db.insert(contactEnquiries).values(input);
-  return { success: true } as const;
+  if (!db) throw new Error("The cart service is temporarily unavailable.");
+  await db.delete(cartItems).where(and(eq(cartItems.id, input.cartItemId), eq(cartItems.userId, input.userId)));
+  return getCartSummary(input.userId);
 }

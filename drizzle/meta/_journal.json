@@ -8,48 +8,6 @@
       "when": 1787552962149,
       "tag": "0000_previous_sersi",
       "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1787679306868,
-      "tag": "0001_free_quasimodo",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1787679582625,
-      "tag": "0002_flaky_thunderball",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1787680687295,
-      "tag": "0003_nebulous_rockslide",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "5",
-      "when": 1787717163708,
-      "tag": "0004_sticky_trauma",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "5",
-      "when": 1787719308695,
-      "tag": "0005_sudden_gressill",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "5",
-      "when": 1787719787080,
-      "tag": "0006_wakeful_molten_man",
-      "breakpoints": true
     }
   ]
 }

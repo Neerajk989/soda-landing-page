@@ -13,136 +13,40 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
-/** Community events displayed publicly and open for authenticated student registrations. */
-export const communityEvents = mysqlTable("communityEvents", {
+/** Store-managed Soda flavors. Catalog data is seeded from the application on first read. */
+export const products = mysqlTable("products", {
   id: int("id").autoincrement().primaryKey(),
-  slug: varchar("slug", { length: 96 }).notNull().unique(),
-  title: varchar("title", { length: 160 }).notNull(),
+  slug: varchar("slug", { length: 64 }).notNull().unique(),
+  name: varchar("name", { length: 128 }).notNull(),
   description: text("description").notNull(),
-  scheduleLabel: varchar("scheduleLabel", { length: 128 }).notNull(),
-  location: varchar("location", { length: 160 }).notNull(),
-  format: mysqlEnum("format", ["in_person", "online", "hybrid"]).default("in_person").notNull(),
-  audience: varchar("audience", { length: 96 }).notNull(),
+  basePriceCents: int("basePriceCents").notNull(),
+  accent: varchar("accent", { length: 16 }).notNull(),
   active: int("active").notNull().default(1),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
-/** Student registrations are private to each authenticated user. */
-export const eventRegistrations = mysqlTable("eventRegistrations", {
+/** Each shopper's saved product configuration. Unique indexing prevents duplicate matching lines. */
+export const cartItems = mysqlTable("cartItems", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
-  eventId: int("eventId").notNull(),
+  productId: int("productId").notNull(),
+  packSize: mysqlEnum("packSize", ["single", "six", "twelve"]).notNull(),
+  cadence: mysqlEnum("cadence", ["one_time", "weekly", "monthly"]).notNull().default("one_time"),
+  unitPriceCents: int("unitPriceCents").notNull(),
+  quantity: int("quantity").notNull().default(1),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => ({
-  uniqueRegistration: uniqueIndex("event_registration_user_event_unique").on(
+  uniqueConfiguration: uniqueIndex("cart_user_product_configuration_unique").on(
     table.userId,
-    table.eventId,
+    table.productId,
+    table.packSize,
+    table.cadence,
   ),
 }));
 
-/** A student’s submitted interest application for the on-campus builder program. */
-export const builderApplications = mysqlTable("builderApplications", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  branch: varchar("branch", { length: 96 }).notNull(),
-  yearOfStudy: varchar("yearOfStudy", { length: 32 }).notNull(),
-  linkedinUrl: varchar("linkedinUrl", { length: 256 }),
-  skills: text("skills").notNull(),
-  motivation: text("motivation").notNull(),
-  status: mysqlEnum("status", ["submitted", "under_review", "selected"]).default("submitted").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, table => ({
-  uniqueApplicant: uniqueIndex("builder_application_user_unique").on(table.userId),
-}));
-
-/** Public notices are maintained by the community team. */
-export const announcements = mysqlTable("announcements", {
-  id: int("id").autoincrement().primaryKey(),
-  title: varchar("title", { length: 180 }).notNull(),
-  body: text("body").notNull(),
-  category: mysqlEnum("category", ["program", "event", "resource"]).default("program").notNull(),
-  active: int("active").notNull().default(1),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, table => ({
-  uniqueTitle: uniqueIndex("announcements_title_unique").on(table.title),
-}));
-
-/** Public leadership and core-member roster for the student community. */
-export const communityMembers = mysqlTable("communityMembers", {
-  id: int("id").autoincrement().primaryKey(),
-  fullName: varchar("fullName", { length: 160 }).notNull(),
-  position: varchar("position", { length: 96 }).notNull(),
-  team: varchar("team", { length: 120 }).notNull(),
-  branch: varchar("branch", { length: 128 }),
-  yearOfStudy: varchar("yearOfStudy", { length: 32 }),
-  usn: varchar("usn", { length: 64 }),
-  linkedinUrl: varchar("linkedinUrl", { length: 256 }),
-  contactNumber: varchar("contactNumber", { length: 32 }),
-  showAcademicDetails: int("showAcademicDetails").notNull().default(0),
-  showLinkedin: int("showLinkedin").notNull().default(0),
-  showContactNumber: int("showContactNumber").notNull().default(0),
-  sortOrder: int("sortOrder").notNull().default(100),
-  active: int("active").notNull().default(1),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, table => ({
-  uniqueMember: uniqueIndex("community_members_full_name_unique").on(table.fullName),
-}));
-
-/** Member-provided profile details are held for community review before any public profile changes. */
-export const memberProfileSubmissions = mysqlTable("memberProfileSubmissions", {
-  id: int("id").autoincrement().primaryKey(),
-  memberId: int("memberId").notNull(),
-  userId: int("userId").notNull(),
-  branch: varchar("branch", { length: 128 }),
-  yearOfStudy: varchar("yearOfStudy", { length: 32 }),
-  usn: varchar("usn", { length: 64 }),
-  linkedinUrl: varchar("linkedinUrl", { length: 256 }),
-  contactNumber: varchar("contactNumber", { length: 32 }),
-  showAcademicDetails: int("showAcademicDetails").notNull().default(0),
-  showLinkedin: int("showLinkedin").notNull().default(0),
-  showContactNumber: int("showContactNumber").notNull().default(0),
-  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
-  reviewedByUserId: int("reviewedByUserId"),
-  reviewedAt: timestamp("reviewedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, table => ({
-  uniqueSubmitterMember: uniqueIndex("member_profile_submission_user_member_unique").on(table.userId, table.memberId),
-}));
-
-/** A community reviewer verifies this claim before a signed-in account may submit a member profile. */
-export const memberProfileClaims = mysqlTable("memberProfileClaims", {
-  id: int("id").autoincrement().primaryKey(),
-  memberId: int("memberId").notNull(),
-  userId: int("userId").notNull(),
-  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
-  reviewedByUserId: int("reviewedByUserId"),
-  reviewedAt: timestamp("reviewedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-}, table => ({
-  uniqueClaimedMember: uniqueIndex("member_profile_claim_member_unique").on(table.memberId),
-  uniqueClaimingUser: uniqueIndex("member_profile_claim_user_unique").on(table.userId),
-}));
-
-/** Public enquiries remain available without requiring an account. */
-export const contactEnquiries = mysqlTable("contactEnquiries", {
-  id: int("id").autoincrement().primaryKey(),
-  name: varchar("name", { length: 128 }).notNull(),
-  email: varchar("email", { length: 320 }).notNull(),
-  subject: varchar("subject", { length: 160 }).notNull(),
-  message: text("message").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
-export type CommunityEvent = typeof communityEvents.$inferSelect;
-export type BuilderApplication = typeof builderApplications.$inferSelect;
-export type CommunityMember = typeof communityMembers.$inferSelect;
-export type MemberProfileSubmission = typeof memberProfileSubmissions.$inferSelect;
-export type MemberProfileClaim = typeof memberProfileClaims.$inferSelect;
+export type Product = typeof products.$inferSelect;
+export type CartItem = typeof cartItems.$inferSelect;
