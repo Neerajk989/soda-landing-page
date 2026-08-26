@@ -15,10 +15,12 @@
 - [x] Add student-community models and backend APIs for events, program applications, announcements, and contact enquiries.
 - [x] Build responsive public pages and authenticated student workflows with complete navigation.
 - [x] Test the community website, verify mobile responsiveness, and publish the finished version.
-- [ ] Keep the site labelled as a public-reference-based student community until formal S.B. Jain and AWS brand approval is supplied.
+- [x] Keep the site labelled as a public-reference-based student community until formal S.B. Jain and AWS brand approval is supplied.
 - [ ] Verify authenticated event registration and Student Builder Program submission with a signed-in student account.
 - [ ] Verify a real public community enquiry submission with user-provided contact information.
-- [ ] Save the final published community website checkpoint after complete workflow verification.
+- [x] Save the published community website checkpoint with the completed member-directory feature.
+- [x] Correct production asset paths to load from the root domain in the local production build.
+- [ ] Rebuild and verify the published community website after the production asset-path fix.
 - [x] Explore the requested YouTube channel and provide a concise channel analysis with three viewing recommendations.
 - [x] Import the supplied AWS Community core-member names and positions into a persistent member directory.
 - [x] Add public member-list APIs and a responsive leadership directory section to the community website.

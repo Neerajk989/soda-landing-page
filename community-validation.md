@@ -9,3 +9,5 @@ The student sign-in action redirected to the configured authentication portal, b
 The core-member directory loaded successfully from the public community API. It displayed all 20 supplied roster entries, including Sarang Chakole as Group Leader and the Technical, Design & Content, Operational, Marketing & PR, and Event teams. The visible filter controls correctly exposed each of those teams.
 
 The Technical Team filter was exercised in the live interface and reduced the roster to the four expected entries: Faiz Shaikh, Neeraj Khapre, Devanshu Kindarlaey, and Nevidita Nandurkar. The project also passed TypeScript checks, five Vitest tests, and a production build after the member update.
+
+The published domain returned the expected page title but only displayed the hosting badge in the browser during this validation attempt. Further production-log inspection is needed before using the public deployment for account-specific workflow verification.
