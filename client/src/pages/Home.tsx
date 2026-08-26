@@ -3,7 +3,7 @@ import { startLogin } from "@/const";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -14,6 +14,7 @@ import {
   Code2,
   ExternalLink,
   GraduationCap,
+  BookOpen,
   Layers3,
   Lightbulb,
   Linkedin,
@@ -22,9 +23,11 @@ import {
   Menu,
   MessageSquare,
   Network,
+  Phone,
   Rocket,
   Send,
   Sparkles,
+  UserRound,
   UsersRound,
   X,
 } from "lucide-react";
@@ -64,6 +67,12 @@ type MemberRecord = {
   team: string;
   sortOrder: number;
   active: number;
+  branch: string | null;
+  yearOfStudy: string | null;
+  usn: string | null;
+  linkedinUrl: string | null;
+  contactNumber: string | null;
+  hasProfileDetails: boolean;
 };
 
 function scrollToSection(id: string) {
@@ -82,6 +91,8 @@ export default function Home() {
   const [applicationOpen, setApplicationOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [memberTeam, setMemberTeam] = useState("All teams");
+  const [selectedMember, setSelectedMember] = useState<MemberRecord | null>(null);
+  const [requestedMemberSlug, setRequestedMemberSlug] = useState(() => new URLSearchParams(window.location.search).get("member"));
   const [application, setApplication] = useState({ branch: "", yearOfStudy: "", linkedinUrl: "", skills: "", motivation: "" });
   const [contact, setContact] = useState({ name: "", email: "", subject: "", message: "" });
 
@@ -139,12 +150,28 @@ export default function Home() {
     contactMutation.mutate(contact);
   };
 
+  const closeMemberProfile = () => {
+    setSelectedMember(null);
+    setRequestedMemberSlug(null);
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("member")) {
+      url.searchParams.delete("member");
+      window.history.replaceState({}, "", url);
+    }
+  };
+
   const events = (eventsQuery.data ?? []) as EventRecord[];
   const members = (membersQuery.data ?? []) as MemberRecord[];
   const memberTeams = ["All teams", ...Array.from(new Set(members.map(member => member.team)))];
   const visibleMembers = memberTeam === "All teams" ? members : members.filter(member => member.team === memberTeam);
   const announcements = Array.from(new Map((announcementsQuery.data ?? []).map(item => [item.title, item])).values());
   const firstName = user?.name?.split(" ")[0] || "Builder";
+
+  useEffect(() => {
+    if (!requestedMemberSlug || selectedMember || members.length === 0) return;
+    const match = members.find(member => member.fullName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") === requestedMemberSlug);
+    if (match) setSelectedMember(match);
+  }, [members, requestedMemberSlug, selectedMember]);
 
   return (
     <main className="community-shell">
@@ -218,7 +245,7 @@ export default function Home() {
         </div>
         <div className="member-grid">
           {membersQuery.isLoading && <div className="member-loading">Loading the core roster…</div>}
-          {visibleMembers.map((member, index) => <article className={`member-card ${member.team === "Community Leadership" ? "leader-card" : ""}`} key={member.id || `${member.fullName}-${member.team}`}><div className="member-card-top"><span>{String(index + 1).padStart(2, "0")}</span><UsersRound size={18} /></div><h3>{member.fullName}</h3><p>{member.position}</p><footer>{member.team}</footer></article>)}
+          {visibleMembers.map((member, index) => <button className={`member-card ${member.team === "Community Leadership" ? "leader-card" : ""}`} type="button" key={member.id || `${member.fullName}-${member.team}`} onClick={() => setSelectedMember(member)} aria-label={`View profile for ${member.fullName}`}><div className="member-card-top"><span>{String(index + 1).padStart(2, "0")}</span><UsersRound size={18} /></div><h3>{member.fullName}</h3><p>{member.position}</p><footer><span>{member.team}</span><span className="member-profile-link">View profile <ArrowUpRight size={12} /></span></footer></button>)}
         </div>
       </section>
 
@@ -255,6 +282,10 @@ export default function Home() {
 
       <Dialog open={contactOpen} onOpenChange={setContactOpen}>
         <DialogContent className="community-dialog form-dialog"><DialogHeader><span className="dialog-label">CONNECT WITH THE COMMUNITY</span><DialogTitle>Send an enquiry.</DialogTitle><DialogDescription>This form is for community ideas and general questions. For official institute enquiries, use the institute contact channels.</DialogDescription></DialogHeader><form onSubmit={submitContact} className="community-form"><div className="form-row"><label>Name<input required value={contact.name} onChange={e => setContact({ ...contact, name: e.target.value })} placeholder="Your name" /></label><label>Email<input required type="email" value={contact.email} onChange={e => setContact({ ...contact, email: e.target.value })} placeholder="name@example.com" /></label></div><label>Subject<input required value={contact.subject} onChange={e => setContact({ ...contact, subject: e.target.value })} placeholder="What would you like to discuss?" /></label><label>Message<textarea required minLength={20} value={contact.message} onChange={e => setContact({ ...contact, message: e.target.value })} placeholder="Write your note here…" /></label><button className="primary-cta dialog-action" type="submit" disabled={contactMutation.isPending}>{contactMutation.isPending ? "Sending…" : "Send enquiry"}<Send size={16} /></button></form></DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(selectedMember)} onOpenChange={open => !open && closeMemberProfile()}>
+        <DialogContent className="community-dialog member-profile-dialog"><DialogHeader><span className="dialog-label">AWS COMMUNITY · MEMBER PROFILE</span><DialogTitle>{selectedMember?.fullName}</DialogTitle><DialogDescription>{selectedMember?.position} · {selectedMember?.team}</DialogDescription></DialogHeader><div className="profile-identity"><span className="profile-avatar"><UserRound size={24} /></span><div><strong>{selectedMember?.team}</strong><span>Core member</span></div></div><div className="member-profile-grid"><div className="profile-detail"><GraduationCap size={18} /><div><span>Branch</span><strong>{selectedMember?.branch || "Not publicly listed"}</strong></div></div><div className="profile-detail"><BookOpen size={18} /><div><span>Year</span><strong>{selectedMember?.yearOfStudy || "Not publicly listed"}</strong></div></div><div className="profile-detail"><LockKeyhole size={18} /><div><span>USN</span><strong>{selectedMember?.usn || "Not publicly listed"}</strong></div></div><div className="profile-detail"><Linkedin size={18} /><div><span>LinkedIn</span>{selectedMember?.linkedinUrl ? <a href={selectedMember.linkedinUrl} target="_blank" rel="noreferrer">View LinkedIn <ArrowUpRight size={12} /></a> : <strong>Not publicly listed</strong>}</div></div><div className="profile-detail profile-detail-wide"><Phone size={18} /><div><span>Contact number</span><strong>{selectedMember?.contactNumber || "Not publicly listed"}</strong></div></div></div><p className="profile-privacy"><LockKeyhole size={14} />Academic details, USN, LinkedIn, and contact information appear only after the named member has authorised public display.</p></DialogContent>
       </Dialog>
     </main>
   );

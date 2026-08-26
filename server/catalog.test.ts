@@ -32,4 +32,8 @@ describe("community content", () => {
       "Event Team",
     ]));
   });
+
+  it("keeps the supplied roster free from fabricated private profile data", () => {
+    expect(CORE_MEMBERS.every(member => !("contactNumber" in member) && !("usn" in member))).toBe(true);
+  });
 });

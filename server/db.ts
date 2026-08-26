@@ -55,6 +55,18 @@ export const CORE_MEMBERS = [
   { fullName: "SHAGUN HARINKHEDE", position: "Volunteer", team: "Event Team", sortOrder: 53 },
 ] as const;
 
+export type MemberProfileImport = {
+  fullName: string;
+  branch?: string;
+  yearOfStudy?: string;
+  usn?: string;
+  linkedinUrl?: string;
+  contactNumber?: string;
+  showAcademicDetails: boolean;
+  showLinkedin: boolean;
+  showContactNumber: boolean;
+};
+
 let _db: ReturnType<typeof drizzle> | null = null;
 
 // Lazily create the drizzle instance so type checks and unit tests can run without a database connection.
@@ -132,7 +144,44 @@ export async function listCommunityMembers() {
   const db = await getDb();
   if (!db) return CORE_MEMBERS.map((member, index) => ({ ...member, id: -(index + 1), active: 1 }));
   await seedCommunityContent();
-  return db.select().from(communityMembers).where(eq(communityMembers.active, 1)).orderBy(communityMembers.sortOrder);
+  const members = await db.select().from(communityMembers).where(eq(communityMembers.active, 1)).orderBy(communityMembers.sortOrder);
+  return members.map(member => ({
+    id: member.id,
+    fullName: member.fullName,
+    position: member.position,
+    team: member.team,
+    sortOrder: member.sortOrder,
+    active: member.active,
+    branch: member.showAcademicDetails ? member.branch : null,
+    yearOfStudy: member.showAcademicDetails ? member.yearOfStudy : null,
+    usn: member.showAcademicDetails ? member.usn : null,
+    linkedinUrl: member.showLinkedin ? member.linkedinUrl : null,
+    contactNumber: member.showContactNumber ? member.contactNumber : null,
+    hasProfileDetails: Boolean(member.showAcademicDetails || member.showLinkedin || member.showContactNumber),
+  }));
+}
+
+export async function importMemberProfiles(profiles: MemberProfileImport[]) {
+  const db = await getDb();
+  if (!db) throw new Error("The member-profile service is temporarily unavailable.");
+
+  let updated = 0;
+  for (const profile of profiles) {
+    const existing = await db.select({ id: communityMembers.id }).from(communityMembers).where(eq(communityMembers.fullName, profile.fullName)).limit(1);
+    if (!existing[0]) continue;
+    await db.update(communityMembers).set({
+      branch: profile.branch?.trim() || null,
+      yearOfStudy: profile.yearOfStudy?.trim() || null,
+      usn: profile.usn?.trim() || null,
+      linkedinUrl: profile.linkedinUrl?.trim() || null,
+      contactNumber: profile.contactNumber?.trim() || null,
+      showAcademicDetails: profile.showAcademicDetails ? 1 : 0,
+      showLinkedin: profile.showLinkedin ? 1 : 0,
+      showContactNumber: profile.showContactNumber ? 1 : 0,
+    }).where(eq(communityMembers.id, existing[0].id));
+    updated += 1;
+  }
+  return { updated } as const;
 }
 
 export async function getStudentActivity(userId: number) {

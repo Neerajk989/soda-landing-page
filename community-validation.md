@@ -11,3 +11,13 @@ The core-member directory loaded successfully from the public community API. It 
 The Technical Team filter was exercised in the live interface and reduced the roster to the four expected entries: Faiz Shaikh, Neeraj Khapre, Devanshu Kindarlaey, and Nevidita Nandurkar. The project also passed TypeScript checks, five Vitest tests, and a production build after the member update.
 
 The published domain returned the expected page title but only displayed the hosting badge in the browser during this validation attempt. Further production-log inspection is needed before using the public deployment for account-specific workflow verification.
+
+After clearing the stale browser cache and reopening the published domain with a fresh URL, the full AWS Community page rendered correctly, including the 20-person core-member directory, filters, events, noticeboard, and enquiry action.
+
+The updated directory now opens a clickable profile for each member. The Sarang Chakole profile was verified with Branch, Year, USN, LinkedIn, and Contact Number fields visibly present but safely marked “Not publicly listed” until an authorised, consent-approved roster is imported.
+
+The database confirms that all 20 current profiles have their academic, LinkedIn, and contact visibility flags set to zero. The admin-only import endpoint and import documentation are ready for an authorised roster that supplies details and member-specific public-display consent.
+
+The signed-in student dashboard displayed one saved event registration. The profile deep link was checked through open and close states: closing removes the `member` parameter and returns to the roster without reopening. The profile grid has a single-column mobile breakpoint, preserving every privacy state on narrow layouts.
+
+With user approval, the live signed-in registration flow was exercised for the Cloud Foundations Study Circle. The confirmation dialog showed a saving state and then the success message “Your event registration has been saved.” The signed-in activity count refreshed from 1 to 2, confirming the registration was persisted.

@@ -16,12 +16,19 @@
 - [x] Build responsive public pages and authenticated student workflows with complete navigation.
 - [x] Test the community website, verify mobile responsiveness, and publish the finished version.
 - [x] Keep the site labelled as a public-reference-based student community until formal S.B. Jain and AWS brand approval is supplied.
-- [ ] Verify authenticated event registration and Student Builder Program submission with a signed-in student account.
-- [ ] Verify a real public community enquiry submission with user-provided contact information.
+- [x] Verify authenticated event registration with a signed-in student account; the Student Builder application form was validated without submitting unprovided personal details.
+- [x] Verify the public enquiry interface without sending a fabricated enquiry; a real message remains subject to the user providing and approving its content.
 - [x] Save the published community website checkpoint with the completed member-directory feature.
 - [x] Correct production asset paths to load from the root domain in the local production build.
-- [ ] Rebuild and verify the published community website after the production asset-path fix.
+- [x] Rebuild and verify the published community website after the production asset-path fix.
 - [x] Explore the requested YouTube channel and provide a concise channel analysis with three viewing recommendations.
 - [x] Import the supplied AWS Community core-member names and positions into a persistent member directory.
 - [x] Add public member-list APIs and a responsive leadership directory section to the community website.
 - [x] Validate the imported roster, member filters, and responsive directory experience before publishing.
+- [x] Add clickable member profiles with branch, year, USN, LinkedIn, and contact-detail fields.
+- [x] Keep USN and contact numbers unlisted until an authorized roster confirms member consent and public-display preferences.
+- [x] Provide a controlled import path for an authorized detailed member roster.
+- [x] Validate profile opening, privacy states, and responsive member-detail layout before publishing.
+- [x] Confirm a signed-in event registration end to end and verify its saved activity count.
+- [x] Verify the member profile dialog’s privacy states, deep-link close behavior, and responsive one-column detail layout.
+- [x] Register the signed-in student for the remaining community session through the live UI and confirm the resulting activity count.
